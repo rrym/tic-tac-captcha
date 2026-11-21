@@ -74,10 +74,15 @@
 
   .hidden { display: none !important; }
 
-  /* 全屏粒子画布（彩带 / emoji 特效）：固定层不占文档流 */
+  /* 全屏粒子画布（彩带 / emoji / 烟花 / 流星）：固定层不占文档流。
+     注意：canvas 是替换元素，inset:0 不会把它拉伸到视口（会用位图固有尺寸，
+     高分屏 dpr>1 时画布会被撑大导致特效整体偏移）——必须显式给 CSS 宽高 */
   .confetti {
     position: fixed;
     inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;   /* iOS 地址栏收展不跳动 */
     pointer-events: none;
     z-index: 60;
   }
@@ -411,6 +416,21 @@
   .chat-btn:hover { background: var(--surface-2); }
   .chat-btn:active { transform: scale(.94); }
 
+  /* 特效栏：恒一行，放得下居中、放不下横向滚动（内层容器保证左端可滚到） */
+  .fx-bar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .fx-bar::-webkit-scrollbar { display: none; }
+  .fx-inner {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin: 0 auto;
+    width: max-content;
+  }
+
   /* ---------- 聊天气泡栈（最多保留 3 条，自动淡出） ---------- */
   .chat-stack {
     position: fixed;
@@ -500,28 +520,6 @@
   #game .actions .btn { padding-inline: 36px; }   /* 再来一局按钮：内容宽 + 居中（.btn 横向 padding 为 0） */
   /* 对局区底部动作行：无可见子元素时不占位 */
   #game .actions:not(:has(> :not(.hidden))) { display: none; }
-  /* 落子确认条（触屏防误触） */
-  .confirm-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 7px 5px 14px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 99px;
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .confirm-bar button {
-    width: 30px; height: 30px;
-    border-radius: 50%;
-    border: 0;
-    cursor: pointer;
-    font-size: 14px;
-    font-family: inherit;
-  }
-  .confirm-bar .ok { background: #16a34a; color: #fff; }
-  .confirm-bar .no { background: var(--surface-2); color: var(--text-dim); }
   .cell.pending::after {
     content: '';
     position: absolute;
@@ -661,14 +659,9 @@
     <div class="series-progress hidden" id="seriesProgress"></div>
 
     <div class="chat-bar" id="chatBar" aria-label="快捷嘲讽语"></div>
-    <div class="fx-bar" id="fxBar" aria-label="屏幕特效"></div>
+    <div class="fx-bar" id="fxBar" aria-label="屏幕特效"><div class="fx-inner" id="fxInner"></div></div>
 
     <div class="actions">
-      <div class="confirm-bar hidden" id="confirmBar">
-        <span>落这里？</span>
-        <button class="ok" id="confirmOk" title="确认落子">✓</button>
-        <button class="no" id="confirmNo" title="取消">✕</button>
-      </div>
       <div class="mid-actions hidden" id="midActions">
         <button class="btn small" id="drawBtn" title="提议本局握手言和（需对方同意）">🤝 求和</button>
         <button class="btn small" id="resignBtn" title="投子认负，本局归对方">🏳️ 认输</button>
@@ -852,12 +845,22 @@
   /* ---------- 屏幕粒子（彩带 / emoji 特效，一块常驻画布复用） ---------- */
   let confettiCanvas = null, confettiCtx = null, confettiParts = [], confettiOn = false, confettiLast = 0;
   const CONFETTI_COLORS = ['#2563eb', '#e11d48', '#f59e0b', '#10b981', '#8b5cf6', '#fbbf24'];
-  function confetti(count) {   // 长方形纸屑
+  // 特效坐标基准：全部以棋盘区域为中心展开；棋盘不可见时兜底屏幕中部
+  function fxRegion() {
+    const el = $('board');
+    if (el && !el.classList.contains('hidden')) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 40) return { x: r.left, y: r.top, w: r.width, h: r.height };
+    }
+    return { x: innerWidth * 0.08, y: innerHeight * 0.18, w: innerWidth * 0.84, h: innerHeight * 0.5 };
+  }
+  function confetti(count) {   // 长方形纸屑（随机覆盖棋盘区域）
+    const R = fxRegion();
     const parts = [];
     for (let i = 0; i < count; i++) {
       parts.push({
-        x: Math.random() * innerWidth,
-        y: -20 - Math.random() * innerHeight * 0.4,
+        x: R.x + Math.random() * R.w,
+        y: R.y - 20 - Math.random() * R.h * 0.5,
         w: 6 + Math.random() * 5,
         h: 8 + Math.random() * 6,
         vx: (Math.random() - 0.5) * 2.2,
@@ -873,13 +876,14 @@
     const ch = FX[kind];
     if (!ch) return;
     const big = kind === 'kiss';
+    const R = fxRegion();
     const parts = [];
     for (let i = 0; i < count; i++) {
       parts.push({
         ch,
         fs: (big ? 26 : 15) + Math.random() * (big ? 12 : 9),
-        x: Math.random() * innerWidth,
-        y: -30 - Math.random() * innerHeight * 0.5,
+        x: R.x + Math.random() * R.w,          // 随机铺满棋盘宽度
+        y: R.y - 30 - Math.random() * R.h * 0.5,
         w: 0, h: 0,
         vx: (Math.random() - 0.5) * 1.2,
         vy: (kind === 'snow' ? 0.8 : 1.3) + Math.random() * 1.5,
@@ -901,13 +905,14 @@
   function fireworks(bursts) {
     for (let i = 0; i < bursts; i++) {
       setTimeout(() => {
+        const R = fxRegion();
         spawnParts([{
           mode: 'rocket',
-          x: innerWidth * (0.15 + Math.random() * 0.7),
-          y: innerHeight + 12,
-          vx: (Math.random() - 0.5) * 0.8,
-          vy: -(14 + Math.random() * 5),       // 快速升空（约 0.8s），别在棋盘前磨蹭
-          targetY: innerHeight * (0.08 + Math.random() * 0.18),   // 只在顶部 8%-26% 绽放
+          x: R.x + R.w * (0.1 + Math.random() * 0.8),   // 随机落点铺开
+          y: R.y + R.h + 12,                            // 从棋盘下缘升空
+          vx: (Math.random() - 0.5) * 1.2,
+          vy: -(14 + Math.random() * 5),
+          targetY: R.y + R.h * (0.08 + Math.random() * 0.45),   // 爆点散布棋盘大半面积
           color: FIREWORK_COLORS[Math.floor(Math.random() * FIREWORK_COLORS.length)],
           w: 0, h: 0, rot: 0, vr: 0,
         }]);
@@ -955,22 +960,22 @@
   /* ---------- 流星：斜划过天顶，亮头 + 渐隐长尾 ---------- */
   function meteors(n) {
     for (let i = 0; i < n; i++) {
-      setTimeout(() => spawnParts([{
-        mode: 'meteor',
-        x: Math.random() < 0.5 ? -40 : innerWidth + 40,   // 随机左右来向
-        y: 25 + Math.random() * innerHeight * 0.28,        // 只走天顶区域
-        vx: 0, vy: 0,   // 下方按角度算
-        len: 90 + Math.random() * 60,
-        color: '#fff7d6',
-        w: 0, h: 0, rot: 0, vr: 0,
-      }].map(m => {
-        const fromLeft = m.x < 0;
-        const ang = (12 + Math.random() * 14) * Math.PI / 180;
+      setTimeout(() => {
+        const R = fxRegion();
+        const fromLeft = Math.random() < 0.5;
+        const ang = (10 + Math.random() * 12) * Math.PI / 180;
         const speed = 11 + Math.random() * 5;
-        m.vx = Math.cos(ang) * speed * (fromLeft ? 1 : -1);
-        m.vy = Math.sin(ang) * speed;
-        return m;
-      })), i * 640 + Math.random() * 350);
+        spawnParts([{
+          mode: 'meteor',
+          x: fromLeft ? R.x - 40 : R.x + R.w + 40,   // 从棋盘左/右外侧划入
+          y: R.y + R.h * (0.05 + Math.random() * 0.55),   // 轨迹带随机铺开
+          vx: Math.cos(ang) * speed * (fromLeft ? 1 : -1),
+          vy: Math.sin(ang) * speed,
+          len: 90 + Math.random() * 60,
+          color: '#fff7d6',
+          w: 0, h: 0, rot: 0, vr: 0,
+        }]);
+      }, i * 640 + Math.random() * 350);
     }
   }
   function spawnParts(parts) {
@@ -993,11 +998,12 @@
     if (confettiOn) return;
     confettiOn = true;
     (function frame(now) {
+      const R = fxRegion();
       confettiCtx.clearRect(0, 0, innerWidth, innerHeight);
       confettiParts = confettiParts.filter(p => {
         if (p.mode === 'spark' || p.mode === 'flash') return p.life > 0;
-        if (p.mode === 'meteor') return p.x > -p.len - 80 && p.x < innerWidth + p.len + 80;
-        return p.y < innerHeight + 30;
+        if (p.mode === 'meteor') return p.x > R.x - p.len - 60 && p.x < R.x + R.w + p.len + 60;
+        return p.y < R.y + R.h + 40;   // 出棋盘下缘即回收
       });
       confettiCtx.lineCap = 'round';
       const addSparks = [];
@@ -1088,7 +1094,7 @@
           p.x += p.vx;
           p.y += p.vy;
           p.rot += p.vr;
-          p.vx += Math.sin(now / 300 + p.y / 40) * 0.04;
+          p.vx = p.vx * 0.96 + Math.sin(now / 300 + p.y / 40) * 0.04;   // 阻尼摆动：飘而不散
           if (p.ch) {                                       // emoji 粒子（半透明，不挡棋盘视线）
             confettiCtx.globalAlpha = .85;
             confettiCtx.font = p.fs + 'px "Apple Color Emoji","Segoe UI Emoji",sans-serif';
@@ -1130,8 +1136,8 @@
     btn.addEventListener('click', () => {
       const st = session && session.getState();
       if (!st || st.over || !st.myTurn || st.board[i]) return;
-      if (!CONFIRM_MODE) { placeAt(i); return; }
-      setPending(i);   // 触屏：先预览，确认条点头后才真落
+      if (!CONFIRM_MODE || pendingCell === i) { placeAt(i); return; }   // 触屏：再点同一格 = 确认落子
+      setPending(i);   // 触屏防误触：第一下只显示预览
     });
     $('board').appendChild(btn);
     return btn;
@@ -1145,15 +1151,11 @@
     pendingCell = i;
     cells.forEach(c => c.classList.remove('pending'));
     cells[i].classList.add('pending');
-    $('confirmBar').classList.remove('hidden');
   }
   function clearPending() {
     pendingCell = -1;
     cells.forEach(c => c.classList.remove('pending'));
-    $('confirmBar').classList.add('hidden');
   }
-  $('confirmOk').addEventListener('click', () => { if (pendingCell >= 0) placeAt(pendingCell); else clearPending(); });
-  $('confirmNo').addEventListener('click', clearPending);
 
   // 黑白棋子小图章（顶栏「你执 ●」/ 状态栏）
   const chip = m => `<span class="chip ${m === 'B' ? 'cb' : 'cw'}" title="${m === 'B' ? '黑子' : '白子'}"></span>`;
@@ -1402,7 +1404,7 @@
 
   /* ---------- 屏幕特效（点一下，在对方屏幕上撒） ---------- */
   function renderFxBar() {
-    const bar = $('fxBar');
+    const bar = $('fxInner');
     bar.innerHTML = '';
     FX_LIST.forEach(f => {
       const b = document.createElement('button');
@@ -1721,10 +1723,13 @@
     let sum = 0;
     for (let i = 0; i < vfxBuf.length; i++) { const v = (vfxBuf[i] - 128) / 128; sum += v * v; }
     const rms = Math.sqrt(sum / vfxBuf.length);
-    const boosted = Math.min(1, rms * 6);    // 放大到可视区间
-    st.disp += (boosted - st.disp) * .35;    // 平滑跟随
-    if (!st.on && st.disp > .12) st.on = true;
-    else if (st.on && st.disp < .05) st.on = false;   // 迟滞防抖
+    // 电平自适应：各设备麦克风增益差异大，按「近期峰值」归一化而非固定倍率
+    st.peak = Math.max((st.peak || 0) * 0.998, rms);
+    const ref = Math.max(st.peak * 0.6, 0.01);   // 下限防环境底噪误触发
+    const boosted = Math.min(1, rms / ref);
+    st.disp += (boosted - st.disp) * 0.35;       // 平滑跟随
+    if (!st.on && st.disp > 0.35) st.on = true;
+    else if (st.on && st.disp < 0.15) st.on = false;   // 迟滞防抖
     el.classList.toggle('on', st.on);
     el.style.setProperty('--vol', st.disp.toFixed(3));
   }
