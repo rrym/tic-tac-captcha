@@ -66,7 +66,7 @@ const captcha = createCaptcha(el, {
 ```bash
 npm install tic-tac-captcha
 # 或直接装 GitHub 版本：
-# npm install github:<你的用户名>/tic-tac-captcha
+# npm install github:rrym/tic-tac-captcha
 ```
 
 ```vue

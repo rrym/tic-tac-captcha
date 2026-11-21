@@ -39,11 +39,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/your-name/tic-tac-captcha.git"
+    "url": "git+https://github.com/rrym/tic-tac-captcha.git"
   },
-  "homepage": "https://github.com/your-name/tic-tac-captcha#readme",
+  "homepage": "https://github.com/rrym/tic-tac-captcha#readme",
   "bugs": {
-    "url": "https://github.com/your-name/tic-tac-captcha/issues"
+    "url": "https://github.com/rrym/tic-tac-captcha/issues"
   },
   "engines": {
     "node": ">=14"
