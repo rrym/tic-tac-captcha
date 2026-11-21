@@ -25,10 +25,10 @@ function pair() {
   let ok = true;
   for (let i = 0; i < 100; i++) {
     const c = TTTOnline.randomRoomCode(4);
-    if (!/^[A-Z2-9]{4}$/.test(c) || /[ILO01]/.test(c)) ok = false;
+    if (!/^[A-Z0-9]{4}$/.test(c)) ok = false;
     set.add(c);
   }
-  check(ok, '房间码：4 位、字符集排除 I L O 0 1');
+  check(ok, '房间码：4 位、全部大写字母与数字');
   check(set.size > 90, '房间码：随机性充足（100 次生成 ' + set.size + ' 个不同值）');
 }
 
@@ -120,6 +120,44 @@ function pair() {
   check(a.over && a.winner === null, '下满 9 格判平局');
   check(a.board.every(v => v), '平局时棋盘全满');
   check(JSON.stringify(a.board) === JSON.stringify(B.getState().board), '平局双端棋盘一致');
+}
+
+/* ---------- 断线重连：从快照恢复 ---------- */
+{
+  let target;   // B 的消息投递目标：掉线前是 A，房主重开后切到 A2
+  const B = TTTOnline.createSession({ isHost: false, send: m => target.onRemoteMsg(m) });
+  const A = TTTOnline.createSession({ isHost: true, send: m => B.onRemoteMsg(m) });
+  target = A;
+  [[A, 0], [B, 3], [A, 1]].forEach(([s, i]) => s.onLocalMove(i));
+
+  // 房主 A 掉线重开页面：用断线前的快照重建
+  const snap = A.getState();
+  const A2 = target = TTTOnline.createSession({
+    isHost: true, send: m => B.onRemoteMsg(m),
+    resume: { board: snap.board, round: snap.round, over: snap.over },
+  });
+  const s2 = A2.getState();
+  check(JSON.stringify(s2.board) === JSON.stringify(snap.board) && s2.round === snap.round, 'resume：局面与局号恢复');
+  check(s2.myMark === snap.myMark && s2.myTurn === snap.myTurn && !s2.over, 'resume：手别/行动权/未终局正确');
+
+  // 恢复后继续对局：轮到 O（客方）落 4，A2 再落 2 → X 连成 0-1-2 获胜
+  B.onLocalMove(4);
+  A2.onLocalMove(2);
+  check(A2.getState().over && A2.getState().winner === 'X' && B.getState().over, 'resume：恢复后正常续局，双端判胜一致');
+
+  // 终局快照恢复：over/winner 保留，且能直接 rematch
+  const fin = A2.getState();
+  const A3 = TTTOnline.createSession({
+    isHost: true, send: () => {},
+    resume: { board: fin.board, round: fin.round, over: fin.over },
+  });
+  check(A3.getState().over && A3.getState().winner === 'X' && A3.getState().line.join('') === '012', 'resume：终局快照恢复 over/winner/连线');
+  A3.rematch();
+  check(A3.getState().round === fin.round + 1 && !A3.getState().over, 'resume：恢复的终局可直接再来一局');
+
+  // 非法快照被忽略，回退为全新对局
+  const A4 = TTTOnline.createSession({ isHost: true, send: () => {}, resume: { board: 'x' } });
+  check(A4.getState().board.every(v => !v) && A4.getState().round === 0, 'resume：非法快照被忽略');
 }
 
 console.log(failed === 0 ? '\n全部通过 ✅' : `\n${failed} 项失败 ❌`);

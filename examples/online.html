@@ -119,6 +119,9 @@
     outline: none;
   }
   .join-row input:focus { border-color: var(--x); }
+  .join-row .btn { padding-inline: 18px; white-space: nowrap; }
+  /* 自定义房间码输入：占位文案较长，缩小占位字号避免溢出 */
+  #customCode::placeholder { font-size: 13px; letter-spacing: 1px; }
   .hint { font-size: 12px; color: var(--text-dim); line-height: 1.6; }
   .err { font-size: 13px; color: #dc2626; min-height: 18px; }
   .back { font-size: 13px; }
@@ -204,7 +207,6 @@
     font-weight: 600;
   }
   .btn.primary:hover { opacity: .9; background: var(--text); }
-  .btn.big { font-size: 16px; padding: 14px 0; }
 
   /* ---------- 对局 ---------- */
   .topbar {
@@ -299,6 +301,10 @@
   }
   .cell[data-mark="X"] .piece-x,
   .cell[data-mark="O"] .piece-o { opacity: 1; }
+  /* 未落子一方的棋子彻底移出渲染（而非 opacity:0）：
+     否则胜局变暗规则 .board.win … .piece { opacity:.28 } 会把它一起显出来，造成双棋重叠 */
+  .cell:not([data-mark="X"]) .piece-x,
+  .cell:not([data-mark="O"]) .piece-o { display: none; }
   .cell[data-mark="X"] .piece-x { animation: piece-in .34s cubic-bezier(.34, 1.56, .64, 1); }
   .cell[data-mark="O"] .piece-o { animation: piece-in .34s cubic-bezier(.34, 1.56, .64, 1) .06s; }
   @keyframes piece-in {
@@ -477,6 +483,11 @@
 
   .actions { display: flex; gap: 10px; }
   .modal .actions .btn { flex: 1; }   /* 弹窗内两按钮等宽平分，整体居中 */
+  /* 对局区「再来一局」按钮：内容宽并水平居中（.btn 横向 padding 为 0，需单独补） */
+  #game .actions { justify-content: center; }
+  #game .actions .btn { padding-inline: 36px; }
+  /* 按钮隐藏时容器不占位（#game 为 gap 布局，空容器会多出一段空白） */
+  #game .actions:not(:has(.btn:not(.hidden))) { display: none; }
 
   /* ---------- 结果弹窗 ---------- */
   .modal-overlay {
@@ -534,11 +545,16 @@
 
   <!-- 大厅 -->
   <section class="card" id="lobby">
-    <button class="btn primary big" id="createBtn">🔗 创建房间</button>
-    <div class="divider">或输入房间码加入</div>
+    <button class="btn hidden" id="resumeBtn"></button>
     <div class="join-row">
-      <input id="codeInput" maxlength="4" placeholder="ABCD" autocomplete="off">
-      <button class="btn" id="joinBtn">加入</button>
+      <input id="customCode" maxlength="4" placeholder="自定义房间码（可选）" autocomplete="off"
+             autocapitalize="characters" spellcheck="false">
+      <button class="btn primary" id="createBtn">🔗 创建房间</button>
+    </div>
+    <div class="divider">输入房间码，自动加入</div>
+    <div class="join-row">
+      <input id="codeInput" maxlength="4" placeholder="ABCD" autocomplete="off"
+             autocapitalize="characters" spellcheck="false">
     </div>
     <div class="series-switch" role="radiogroup" aria-label="对局模式（房主选择，加入方跟随）">
       <button type="button" class="seg active" data-series="0">无限对局</button>
@@ -653,6 +669,12 @@
   ];
   let themeIndex = Math.floor(Math.random() * THEMES.length);
   let theme = THEMES[themeIndex];
+  const defaultThemeIndex = themeIndex;   // 本次打开页面随机抽到的主题（建房未命中彩蛋码时用它）
+
+  // 彩蛋：特定房间码 → 指定棋子主题（房主创建时生效，随后经 config 消息同步给加入方）
+  const CODE_THEMES = {
+    '7777': 1,   // 7777 → 奶茶 drink 系列
+  };
 
   // 图片池配对：由「种子 + 局号」确定性推导——种子开局同步一次，
   // 之后每局双方各自算出的棋子对完全一致，无需额外消息
@@ -730,6 +752,31 @@
   let prevBoard = [];                    // 上一帧棋盘：定位新落子格（涟漪 + 音效）
   let pendingSelfSound = false;          // 本方落子音效由点击处直接播，渲染层跳过
   let chatRound = -1;                    // 表情栏当前对应的局号（每局洗牌一次）
+  let activeCode = null;                 // 当前房间码（存档与重连轮询用）
+
+  /* ---------- 断线重连：对局进度本地存档（页面被关后仍可回房） ----------
+     正常退出（离开/取消）会清除；只有异常关闭才留存，下次打开在大厅给「回到房间」入口 */
+  const SAVE_KEY = 'tttc-active';
+  function saveActive() {
+    if (!session) return;
+    try {
+      const st = session.getState();
+      localStorage.setItem(SAVE_KEY, JSON.stringify({
+        code: activeCode, isHost,
+        board: st.board, round: st.round, over: st.over,
+        wins, draws, losses, myStreak, oppStreak,
+        seriesTarget, seriesEnded, themeIndex, themeSeed, at: Date.now(),
+      }));
+    } catch (e) {}
+  }
+  function readActive(code) {
+    try {
+      const d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+      if (d && d.code === (code || d.code) && Date.now() - (d.at || 0) < 24 * 3600e3) return d;
+    } catch (e) {}
+    return null;
+  }
+  function clearActive() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} }
 
   /* ---------- 界面切换 ---------- */
   const show = (id, on) => $(id).classList.toggle('hidden', !on);
@@ -737,8 +784,10 @@
 
   function backToLobby() {
     cleanup();
+    clearActive();                       // 主动退出：放弃重连存档
     show('lobby', true); show('waiting', false); show('game', false);
     $('resultModal').classList.remove('show');
+    $('resumeBtn').classList.add('hidden');
   }
 
   function cleanup() {
@@ -748,6 +797,7 @@
     hasOpponent = false; seriesEnded = false;
     prevBoard = []; pendingSelfSound = false; chatRound = -1;
     myStreak = 0; oppStreak = 0;
+    stopReconnectLoop();
   }
 
   /* ---------- 音效（WebAudio 现场合成，零素材；🔊 一键静音） ---------- */
@@ -901,6 +951,7 @@
         ? `轮到你落子 ${chip(st.myMark)}`
         : `等待对方落子…（对方 ${chip(st.myMark === 'X' ? 'O' : 'X')}）`;
     }
+    saveActive();   // 每次状态变化都落一份存档（断线/关页后可回）
   }
 
   function updateScore(popSide) {
@@ -925,6 +976,7 @@
       el.classList.add('pop');
     }
     renderSeriesProgress();
+    saveActive();
   }
 
   function renderSeriesProgress() {
@@ -979,10 +1031,8 @@
       if (iWonSeries) confetti(320);        // 夺冠大撒一波
     } else {
       $('modalAgain').textContent = '再来一局';
-      const st = session ? session.getState() : null;
-      const next = st && st.myMark === 'X' ? 'O' : 'X';
       $('resultSub').textContent =
-        `战绩：你 ${wins} 胜 · 平 ${draws} · 对方 ${losses} 胜 · 下一局你执 ${next}`;
+        `战绩：你 ${wins} 胜 · 平 ${draws} · 对方 ${losses} 胜`;
     }
     $('resultModal').classList.add('show');
   }
@@ -1054,24 +1104,12 @@
     toastChat('对方：' + c.label);
   }
 
-  /* ---------- 开始对局（连接建立后调用） ---------- */
-  function startSession() {
-    show('lobby', false); show('waiting', false); show('game', true);
-    lobbyErr('');
-    wins = 0; draws = 0; losses = 0;
-    myStreak = 0; oppStreak = 0;
-    seriesEnded = false;
-    prevBoard = [];
-    chatRound = -1;
-    if (isHost) seriesTarget = chosenSeries;   // 房主生效自己的选择；加入方等待 config 消息
-    updateScore();
-    setTimeout(() => {
-      toastChat('👋 对手已就位，开始！');
-      sfx.join();
-    }, 400);
+  /* ---------- 开始对局（连接建立后调用；saved 非空 = 从断线存档恢复） ---------- */
+  function makeSession(resumeData) {
     session = TTTOnline.createSession({
       isHost,
       send: m => { if (conn && conn.open) conn.send(m); },
+      resume: resumeData,
       onEvent: e => {
         if (e.type === 'state') render(e.state);
         else if (e.type === 'result') showResult(e);
@@ -1079,16 +1117,50 @@
     });
   }
 
+  function startSession(saved) {
+    if (saved && saved.isHost !== isHost) saved = null;   // 存档角色对不上（换了身份进房）→ 全新对局
+    show('lobby', false); show('waiting', false); show('game', true);
+    lobbyErr('');
+    prevBoard = [];
+    chatRound = -1;
+    if (saved) {
+      wins = saved.wins | 0; draws = saved.draws | 0; losses = saved.losses | 0;
+      myStreak = saved.myStreak | 0; oppStreak = saved.oppStreak | 0;
+      seriesTarget = saved.seriesTarget | 0;
+      seriesEnded = !!saved.seriesEnded;
+      applyTheme(saved.themeIndex, saved.themeSeed);
+    } else {
+      wins = 0; draws = 0; losses = 0;
+      myStreak = 0; oppStreak = 0;
+      seriesEnded = false;
+      if (isHost) seriesTarget = chosenSeries;   // 房主生效自己的选择；加入方等待 config 消息
+    }
+    updateScore();
+    makeSession(saved ? { board: saved.board, round: saved.round, over: saved.over } : null);
+    setTimeout(() => {
+      toastChat(saved ? '🔁 已回到对局' : '👋 对手已就位，开始！');
+      sfx.join();
+    }, 400);
+  }
+
   /* ---------- 连接 ---------- */
   function wireConn() {
     conn.on('open', () => {
       if (hasOpponent) return;                 // 防抖：重复 open
       hasOpponent = true;
+      stopReconnectLoop();
+      const hadSession = !!session;            // 连接建立前对局就在 → 对方刚回来
       if (isHost) {
         // 下发系列赛配置、棋子主题与配对种子（种子决定每局抽哪两张图）
-        conn.send({ type: 'config', series: chosenSeries, theme: themeIndex, seed: themeSeed });
+        conn.send({ type: 'config', series: seriesTarget || chosenSeries, theme: themeIndex, seed: themeSeed });
+        if (!hadSession) startSession(readActive(activeCode));   // 全新开局，或从存档恢复
+        sendResume();           // 校准恒由房主发起（单向，避免双方互发造成分叉）
+        render(session.getState());            // 幸存等待时刷新「等待重连」状态栏
+        if (hadSession) { toastChat('🔁 对方已重新连接'); sfx.join(); }
+      } else {
+        // 加入方：有存档先恢复显示，随后以房主的 resume 校准
+        startSession(readActive(activeCode));
       }
-      startSession();
     });
     conn.on('data', d => {
       if (!d || typeof d !== 'object') return;
@@ -1097,6 +1169,7 @@
         applySeries(d.series);
         applyTheme(d.theme, d.seed);   // 跟随房主的棋子主题与配对种子
       }
+      else if (d.type === 'resume') applyResume(d);       // 断线重连：按对方局面校准
       else if (d.type === 'series-reset') resetSeriesScores();
       else if (session) session.onRemoteMsg(d);           // 棋局消息进状态机
     });
@@ -1113,6 +1186,38 @@
     }
   }
 
+  // 重连校准：房主把完整局面（自己视角的比分）推给加入方；胜负互换后恢复
+  function sendResume() {
+    if (!conn || !conn.open || !session) return;
+    const st = session.getState();
+    conn.send({
+      type: 'resume',
+      board: st.board, round: st.round, over: st.over,
+      wins, losses, draws, myStreak, oppStreak,   // 我方视角，接收方互换
+      series: seriesTarget, seriesEnded,
+      theme: themeIndex, seed: themeSeed,
+    });
+  }
+
+  function applyResume(d) {
+    if (!d || !Array.isArray(d.board) || d.board.length !== 9) return;
+    // 与本地完全一致（如全新对局的首次校准）则静默跳过，不打扰
+    const cur = session ? session.getState() : null;
+    const changed = !cur || cur.round !== (d.round | 0) || !!cur.over !== !!d.over
+      || JSON.stringify(cur.board) !== JSON.stringify(d.board)
+      || wins !== (d.losses | 0) || losses !== (d.wins | 0);
+    wins = d.losses | 0; losses = d.wins | 0; draws = d.draws | 0;
+    myStreak = d.oppStreak | 0; oppStreak = d.myStreak | 0;
+    seriesTarget = d.series | 0; seriesEnded = !!d.seriesEnded;
+    applyTheme(d.theme, d.seed);
+    prevBoard = []; chatRound = -1;
+    show('lobby', false); show('waiting', false); show('game', true);
+    makeSession({ board: d.board, round: d.round, over: d.over });
+    updateScore();
+    saveActive();
+    if (changed) { toastChat('🔁 已重新连接'); sfx.join(); }
+  }
+
   function onConnClosed() {
     if (!session && !isHost) {
       // 尚未开赛连接就断了：多半是房主取消了房间，别让加入方干等超时
@@ -1120,28 +1225,63 @@
       backToLobby();
       return;
     }
-    onPeerLeft();
+    peerDisconnected();
   }
 
-  function onPeerLeft() {
-    if (!session) return;
-    session = null;
+  /* 对局中断线：不结束对局，等对方回来（房间码不变，随时可重进） */
+  let reconnectTimer = null, reconnectSince = 0;
+  function peerDisconnected() {
+    conn = null;
+    hasOpponent = false;               // 复位，否则重连的对方会被拒之门外
+    if (!session) return;              // 还没开赛就断（等待房间的访客闪断）→ 无事可做
     $('board').classList.add('locked');
     $('board').classList.remove('my-turn');
-    $('status').innerHTML = '对方已离开';
+    $('status').innerHTML = '📡 对方连接中断，等待重连…';
     $('rematchBtn').classList.add('hidden');
     $('resultModal').classList.remove('show');
+    saveActive();
+    if (!isHost) startReconnectLoop(); // 房主可能重开了页面，主动轮询找回
+  }
+  function startReconnectLoop() {
+    if (reconnectTimer) return;
+    reconnectSince = Date.now();
+    const attempt = () => {
+      if (!peer || !session || isHost) { stopReconnectLoop(); return; }
+      if (Date.now() - reconnectSince > 3 * 60e3) {   // 3 分钟仍无音讯
+        stopReconnectLoop();
+        $('status').innerHTML = '对方仍未回来，可返回大厅';
+        return;
+      }
+      try {
+        conn = peer.connect(PEER_PREFIX + activeCode, { reliable: true });
+        wireConn();
+      } catch (e) {}
+    };
+    reconnectTimer = setInterval(attempt, 3000);
+    attempt();
+  }
+  function stopReconnectLoop() {
+    if (reconnectTimer) { clearInterval(reconnectTimer); reconnectTimer = null; }
   }
 
-  /* ---------- 房主：创建房间 ---------- */
-  function createRoom(retry) {
+  /* ---------- 房主：创建房间（可自定义房间码；saved 非空 = 回到断线前的房间） ---------- */
+  function createRoom(retry, saved) {
     if (typeof Peer === 'undefined') {
       lobbyErr('网络组件加载失败：请检查网络后刷新页面重试');
       return;
     }
     cleanup();
     isHost = true;
-    const code = TTTOnline.randomRoomCode(4);
+    const custom = $('customCode').value.trim().toUpperCase();
+    if (custom && !CODE_RE.test(custom)) {
+      lobbyErr('自定义房间码为 4 位字母或数字');
+      return;
+    }
+    const code = (saved && saved.code) || custom || TTTOnline.randomRoomCode(4);
+    activeCode = code;
+    if (!saved) clearActive();          // 显式新建 → 放弃旧存档
+    if (saved) applyTheme(saved.themeIndex, saved.themeSeed);
+    else applyTheme(CODE_THEMES[code] !== undefined ? CODE_THEMES[code] : defaultThemeIndex);
     peer = new Peer(PEER_PREFIX + code, { debug: 1 });
 
     peer.on('open', () => {
@@ -1156,7 +1296,14 @@
       wireConn();
     });
     peer.on('error', e => {
-      if (e.type === 'unavailable-id' && retry > 0) { createRoom(retry - 1); } // 房间码撞了，换一个
+      if (e.type === 'unavailable-id') {
+        // 重回旧房间：多半是自己刚掉线的幽灵 ID 尚未释放，稍候重试
+        if (saved && retry > 0) { setTimeout(() => createRoom(retry - 1, saved), 1500); return; }
+        if (custom) lobbyErr(`房间码 ${code} 已被占用，换一个试试`);
+        else if (retry > 0) return createRoom(retry - 1);   // 随机码撞车，自动换一个
+        else lobbyErr('房间码冲突，请重试');
+        backToLobby();
+      }
       else if (!session) { lobbyErr('网络错误：' + e.type); backToLobby(); }
     });
   }
@@ -1169,6 +1316,7 @@
     }
     cleanup();
     isHost = false;
+    activeCode = code;
     show('lobby', true); show('waiting', false);
     lobbyErr('连接中…');
     peer = new Peer({ debug: 1 });
@@ -1183,7 +1331,14 @@
   }
 
   /* ---------- 事件绑定 ---------- */
-  $('createBtn').addEventListener('click', () => createRoom(3));
+  $('createBtn').addEventListener('click', () => {
+    $('resumeBtn').classList.add('hidden');
+    createRoom(3);
+  });
+  $('customCode').addEventListener('input', () => {
+    $('customCode').value = $('customCode').value.toUpperCase();
+    lobbyErr('');
+  });
   $('cancelBtn').addEventListener('click', backToLobby);
   $('leaveBtn').addEventListener('click', backToLobby);
 
@@ -1209,13 +1364,14 @@
     muteBtnEl.textContent = muted ? '🔇' : '🔊';
   });
 
-  $('joinBtn').addEventListener('click', () => {
-    const code = $('codeInput').value.trim().toUpperCase();
-    if (!CODE_RE.test(code)) { lobbyErr('请输入 4 位房间码（字母 I L O 和数字 0 1 除外）'); return; }
-    joinRoom(code);
+  // 输入满 4 位合法字符 → 自动加入，无需点按钮
+  $('codeInput').addEventListener('input', () => {
+    const input = $('codeInput');
+    input.value = input.value.toUpperCase();
+    if (CODE_RE.test(input.value)) { lobbyErr(''); joinRoom(input.value); }
+    else if (input.value.length === 4) lobbyErr('房间码为 4 位字母或数字');
+    else lobbyErr('');
   });
-  $('codeInput').addEventListener('input', () => lobbyErr(''));
-  $('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('joinBtn').click(); });
 
   function copyText(text, btn, normalText) {
     const done = () => {
@@ -1279,6 +1435,22 @@
   if (CODE_RE.test(roomParam)) {
     $('codeInput').value = roomParam;
     joinRoom(roomParam);
+  }
+
+  /* ---------- 断线重连：大厅「回到房间」入口 ---------- */
+  {
+    const saved = readActive();
+    if (saved) {
+      $('resumeBtn').textContent = `🔁 回到房间 ${saved.code} 继续`;
+      $('resumeBtn').classList.remove('hidden');
+      $('resumeBtn').addEventListener('click', () => {
+        const s = readActive();
+        if (!s) return;
+        $('resumeBtn').classList.add('hidden');
+        if (s.isHost) createRoom(5, s);   // 多留几次重试：自己的幽灵 ID 可能还没释放
+        else { $('codeInput').value = s.code; joinRoom(s.code); }
+      });
+    }
   }
 })();
 </script>

@@ -19,8 +19,8 @@
     [0, 4, 8], [2, 4, 6],
   ];
 
-  // 房间码字母表：去掉易混淆的 I L O 0 1
-  var CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  // 房间码字母表：全部大写字母 + 数字
+  var CODE_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
   function getWinner(b) {
     for (var k = 0; k < WIN_LINES.length; k++) {
@@ -51,6 +51,16 @@
     var board = Array(9).fill('');
     var round = 0;                 // 第几局（从 0 计）
     var over = false, winner = null, winLine = null;
+
+    // 断线重连：从快照恢复局面（board/round/over），胜负与连线由棋盘重推
+    if (opts.resume && Array.isArray(opts.resume.board) && opts.resume.board.length === 9) {
+      board = opts.resume.board.slice();
+      round = opts.resume.round | 0;
+      over = !!opts.resume.over;
+      var fin = getWinner(board);
+      winner = over && fin ? fin.winner : null;
+      winLine = fin ? fin.line : null;
+    }
 
     function myMark() { return ((round % 2 === 0) === isHost) ? 'X' : 'O'; }
     function oppMark() { return myMark() === 'X' ? 'O' : 'X'; }
