@@ -309,9 +309,11 @@
   /* 主题棋盘底色（浅淡不抢戏，深色模式同款色系加深） */
   .board[data-theme="tea"]      { --cell-tint: #f6efe4; --cell-tint-hover: #ede2d0; }
   .board[data-theme="chiikawa"] { --cell-tint: #fbf5e0; --cell-tint-hover: #f3ead0; }
+  .board[data-theme="sanrio"]   { --cell-tint: #fdf0f3; --cell-tint-hover: #f8e0e8; }
   @media (prefers-color-scheme: dark) {
     .board[data-theme="tea"]      { --cell-tint: #2c2820; --cell-tint-hover: #3a3428; }
     .board[data-theme="chiikawa"] { --cell-tint: #2c2a1e; --cell-tint-hover: #393627; }
+    .board[data-theme="sanrio"]   { --cell-tint: #2e2226; --cell-tint-hover: #3d2c33; }
   }
   .cell.win-cell { background: var(--win-bg); border-color: var(--win-border); }
   .cell.win-cell .piece { transform: scale(1.1); }
@@ -644,6 +646,10 @@
       board: 'chiikawa',   // 吉伊卡哇系列：图片池随机抽两张
       pool: ['assets/chiikawa1.jpg', 'assets/chiikawa2.jpg', 'assets/chiikawa3.jpg'],
     },
+    {
+      board: 'sanrio',   // 三丽鸥系列：图片池随机抽两张
+      pool: ['assets/sanrio1.jpg', 'assets/sanrio2.jpg', 'assets/sanrio3.jpg', 'assets/sanrio4.jpg'],
+    },
   ];
   let themeIndex = Math.floor(Math.random() * THEMES.length);
   let theme = THEMES[themeIndex];
@@ -849,7 +855,18 @@
   }
 
   function render(st) {
-    if (!st.over) $('resultModal').classList.remove('show');   // 对方重开新局时，收掉本方结果弹窗
+    if (!st.over) $('resultModal').classList.remove('show');
+
+    // 新一局开始 → 先换棋子对和表情栏（必须在本函数开头：下方 who/status 图章立即用新配对渲染）
+    if (st.round !== chatRound) {
+      chatRound = st.round;
+      renderChatBar();
+      if (theme.pool) {
+        pair = pairForRound(st.round);
+        cells.forEach(c => { c.innerHTML = pieceHtml(); });
+      }
+    }
+
     st.board.forEach((m, i) => {
       if (m) cells[i].dataset.mark = m;
       else delete cells[i].dataset.mark;
@@ -861,16 +878,6 @@
     $('who').innerHTML = `你执 ${chip(st.myMark)}`;
     $('roundNo').textContent = `第 ${st.round + 1} 局` + (seriesTarget ? ` · BO${seriesTarget * 2 - 1}` : '');
     $('rematchBtn').classList.toggle('hidden', !st.over || seriesEnded);
-
-    // 新一局开始 → 表情栏重新洗牌；图片主题每局换一对棋子（种子+局号推导，双方一致）
-    if (st.round !== chatRound) {
-      chatRound = st.round;
-      renderChatBar();
-      if (theme.pool) {
-        pair = pairForRound(st.round);
-        cells.forEach(c => { c.innerHTML = pieceHtml(); });
-      }
-    }
 
     // 新落子检测：涟漪 + 音效（本方音效由点击处直接播，跳过）
     let placedIdx = -1;
