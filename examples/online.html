@@ -648,15 +648,26 @@
   let themeIndex = Math.floor(Math.random() * THEMES.length);
   let theme = THEMES[themeIndex];
 
-  // 从图片池抽两张不同的图（X 用第一张，O 用第二张）
-  function pickPair(t) {
-    if (!t.pool) return null;
-    const i = Math.floor(Math.random() * t.pool.length);
-    let j = Math.floor(Math.random() * (t.pool.length - 1));
-    if (j >= i) j++;
-    return [t.pool[i], t.pool[j]];
+  // 图片池配对：由「种子 + 局号」确定性推导——种子开局同步一次，
+  // 之后每局双方各自算出的棋子对完全一致，无需额外消息
+  let themeSeed = Math.floor(Math.random() * 1e9);
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
   }
-  let pair = pickPair(theme);
+  function pairForRound(round) {
+    if (!theme.pool) return null;
+    const rnd = mulberry32((themeSeed ^ Math.imul(round + 1, 2654435761)) >>> 0);
+    const i = Math.floor(rnd() * theme.pool.length);
+    let j = Math.floor(rnd() * (theme.pool.length - 1));
+    if (j >= i) j++;
+    return [theme.pool[i], theme.pool[j]];
+  }
+  let pair = pairForRound(0);
 
   const pieceHtml = () => {
     if (theme.pool) {
@@ -667,12 +678,13 @@
            `<svg class="piece piece-o" viewBox="0 0 100 100" aria-hidden="true">${theme.o}</svg>`;
   };
 
-  // 房主把主题（含奶茶系列的抽图结果）同步给加入方，双方显示同一套棋子
-  function applyTheme(idx, pairData) {
+  // 房主把主题与随机种子同步给加入方：种子相同 → 每局抽出的棋子对双方一致
+  function applyTheme(idx, seedData) {
     if (!THEMES[idx]) return;
     themeIndex = idx;
     theme = THEMES[idx];
-    pair = Array.isArray(pairData) && pairData.length === 2 ? pairData : pickPair(theme);
+    if (typeof seedData === 'number') themeSeed = seedData;
+    pair = pairForRound(session ? session.getState().round : 0);
     $('board').dataset.theme = theme.board;
     cells.forEach(c => { c.innerHTML = pieceHtml(); });   // data-mark 仍在，替换后棋子重新弹入
     if (session) render(session.getState());              // 刷新状态栏里的小图章
@@ -850,10 +862,14 @@
     $('roundNo').textContent = `第 ${st.round + 1} 局` + (seriesTarget ? ` · BO${seriesTarget * 2 - 1}` : '');
     $('rematchBtn').classList.toggle('hidden', !st.over || seriesEnded);
 
-    // 新一局开始 → 表情栏重新洗牌（顺序每局都不同）
+    // 新一局开始 → 表情栏重新洗牌；图片主题每局换一对棋子（种子+局号推导，双方一致）
     if (st.round !== chatRound) {
       chatRound = st.round;
       renderChatBar();
+      if (theme.pool) {
+        pair = pairForRound(st.round);
+        cells.forEach(c => { c.innerHTML = pieceHtml(); });
+      }
     }
 
     // 新落子检测：涟漪 + 音效（本方音效由点击处直接播，跳过）
@@ -1062,8 +1078,8 @@
       if (hasOpponent) return;                 // 防抖：重复 open
       hasOpponent = true;
       if (isHost) {
-        // 下发系列赛配置、棋子主题与奶茶系列的抽图结果
-        conn.send({ type: 'config', series: chosenSeries, theme: themeIndex, pair: pair || undefined });
+        // 下发系列赛配置、棋子主题与配对种子（种子决定每局抽哪两张图）
+        conn.send({ type: 'config', series: chosenSeries, theme: themeIndex, seed: themeSeed });
       }
       startSession();
     });
@@ -1072,7 +1088,7 @@
       if (d.type === 'chat') handleChatMsg(d);            // 快捷消息：页面层处理
       else if (d.type === 'config' && !isHost) {
         applySeries(d.series);
-        applyTheme(d.theme, d.pair);   // 跟随房主的棋子主题与抽图
+        applyTheme(d.theme, d.seed);   // 跟随房主的棋子主题与配对种子
       }
       else if (d.type === 'series-reset') resetSeriesScores();
       else if (session) session.onRemoteMsg(d);           // 棋局消息进状态机
