@@ -49,6 +49,23 @@ function pair() {
   check(JSON.stringify(a.board) === JSON.stringify(b.board), '双端棋盘完全一致');
 }
 
+/* ---------- 终局事件时序：UI 依赖最后一个 state 事件读到 over/line ---------- */
+{
+  const events = [];
+  let A, B;
+  A = TTTOnline.createSession({ isHost: true, send: m => B.onRemoteMsg(m), onEvent: e => events.push(e) });
+  B = TTTOnline.createSession({ isHost: false, send: m => A.onRemoteMsg(m) });
+  [[A, 0], [B, 3], [A, 1], [B, 4], [A, 2]].forEach(([s, i]) => s.onLocalMove(i));
+
+  const states = events.filter(e => e.type === 'state');
+  const last = states[states.length - 1];
+  check(!!last && last.state.over === true, '终局后最后一条 state 事件携带 over=true（重开按钮/锁定依赖它，此前缺失）');
+  check(!!last && last.state.line && last.state.line.join('') === '012', '最终 state 事件包含获胜连线（高亮渲染依赖它）');
+  const resultIdx = events.findIndex(e => e.type === 'result');
+  const lastStateBeforeResult = events.slice(0, resultIdx).filter(e => e.type === 'state').pop();
+  check(lastStateBeforeResult && lastStateBeforeResult.state.over === true, 'result 事件之前已同步出终局 state');
+}
+
 /* ---------- 非法输入防御 ---------- */
 {
   const [A, B] = pair();
