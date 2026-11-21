@@ -241,6 +241,9 @@
   }
   .chip.cx { background: var(--x); }
   .chip.co { background: var(--o); }
+  .chip.chip-plain { background: #fff; border: 1px solid var(--border); }
+  .chip .chip-piece { width: 15px; height: 15px; display: block; }
+  .chip .chip-piece[src] { border-radius: 4px; }   /* 图片版小图章 */
 
   .board {
     display: grid;
@@ -257,21 +260,21 @@
     aspect-ratio: 1;
     border: 1px solid var(--border);
     border-radius: 13px;
-    background: var(--surface-2);
+    background: var(--cell-tint, var(--surface-2));
     cursor: pointer;
     transition: background .15s, transform .12s, border-color .2s;
     padding: 0;
   }
   .board:not(.locked) .cell:not([data-mark]):hover {
-    background: #e9eef6;
+    background: var(--cell-tint-hover, #e9eef6);
     transform: translateY(-1px);
   }
   @media (prefers-color-scheme: dark) {
-    .board:not(.locked) .cell:not([data-mark]):hover { background: #2a3550; }
+    .board:not(.locked) .cell:not([data-mark]):hover { background: var(--cell-tint-hover, #2a3550); }
   }
   .board.locked .cell { cursor: default; }
 
-  .mark {
+  .piece {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -280,37 +283,39 @@
     pointer-events: none;
     transition: opacity .18s, transform .25s;
   }
-  .mark-x line {
-    --len: 68;
-    stroke: var(--x);
-    stroke-width: 10;
-    stroke-linecap: round;
-    fill: none;
-    stroke-dasharray: var(--len);
-    stroke-dashoffset: 0;
+  .piece-x { color: var(--x); }
+  .piece-o { color: var(--o); }
+  /* 图片棋子：白底图做成贴纸卡，避免背景突兀 */
+  .piece-img {
+    inset: 5%;
+    width: 90%;
+    height: 90%;
+    object-fit: contain;
+    padding: 6%;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, .07);
+    border-radius: 16%;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .14);
   }
-  .mark-o circle {
-    --len: 164;
-    stroke: var(--o);
-    stroke-width: 10;
-    fill: none;
-    stroke-dasharray: var(--len);
-    stroke-dashoffset: 0;
+  .cell[data-mark="X"] .piece-x,
+  .cell[data-mark="O"] .piece-o { opacity: 1; }
+  .cell[data-mark="X"] .piece-x { animation: piece-in .34s cubic-bezier(.34, 1.56, .64, 1); }
+  .cell[data-mark="O"] .piece-o { animation: piece-in .34s cubic-bezier(.34, 1.56, .64, 1) .06s; }
+  @keyframes piece-in {
+    from { transform: scale(.3); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
   }
-  .cell[data-mark="X"] .mark-x,
-  .cell[data-mark="O"] .mark-o { opacity: 1; }
-  .cell[data-mark] .mark-x line,
-  .cell[data-mark] .mark-o circle { stroke-dashoffset: var(--len); }
-  .cell[data-mark="X"] .mark-x line { animation: draw .3s ease-out forwards; }
-  .cell[data-mark="X"] .mark-x line:last-child { animation-delay: .16s; }
-  .cell[data-mark="O"] .mark-o circle { animation: draw .42s ease-out forwards; }
-  @keyframes draw {
-    from { stroke-dashoffset: var(--len); }
-    to   { stroke-dashoffset: 0; }
+
+  /* 主题棋盘底色（浅淡不抢戏，深色模式同款色系加深） */
+  .board[data-theme="tea"]      { --cell-tint: #f6efe4; --cell-tint-hover: #ede2d0; }
+  .board[data-theme="chiikawa"] { --cell-tint: #fbf5e0; --cell-tint-hover: #f3ead0; }
+  @media (prefers-color-scheme: dark) {
+    .board[data-theme="tea"]      { --cell-tint: #2c2820; --cell-tint-hover: #3a3428; }
+    .board[data-theme="chiikawa"] { --cell-tint: #2c2a1e; --cell-tint-hover: #393627; }
   }
   .cell.win-cell { background: var(--win-bg); border-color: var(--win-border); }
-  .cell.win-cell .mark { transform: scale(1.1); }
-  .board.win .cell:not(.win-cell) .mark { opacity: .28; }
+  .cell.win-cell .piece { transform: scale(1.1); }
+  .board.win .cell:not(.win-cell) .piece { opacity: .28; }
   .board.my-turn {
     border-color: var(--x);
     box-shadow: 0 0 0 3px rgba(37, 99, 235, .15), var(--shadow);
@@ -616,9 +621,85 @@
   'use strict';
 
   const $ = id => document.getElementById(id);
-  const chip = m => `<span class="chip ${m === 'X' ? 'cx' : 'co'}">${m}</span>`;
   const CODE_RE = new RegExp('^[' + TTTOnline.CODE_CHARS + ']{4}$');
   const PEER_PREFIX = 'tttc-v1-';
+
+  /* ---------- 棋子主题：每次打开随机一套，对局期间不变 ----------
+     X 方恒为蓝色调、O 方恒为红色调；形状 + 颜色双重区分，保证识别清晰 */
+  const THEMES = [
+    {
+      board: '',
+      x: '<g fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round">' +
+         '<line x1="27" y1="27" x2="73" y2="73"/><line x1="73" y1="27" x2="27" y2="73"/></g>',
+      o: '<circle cx="50" cy="50" r="26" fill="none" stroke="currentColor" stroke-width="10"/>',
+    },
+    {
+      board: 'tea',   // 奶茶系列：图片池每场随机抽两张当 X / O
+      pool: [
+        'assets/drink1.jpg', 'assets/drink2.jpg', 'assets/drink3.jpg', 'assets/drink4.jpg',
+        'assets/drink5.jpg', 'assets/drink6.jpg', 'assets/drink7.jpg',
+      ],
+    },
+    {
+      board: 'chiikawa',   // 吉伊卡哇系列：图片池随机抽两张
+      pool: ['assets/chiikawa1.jpg', 'assets/chiikawa2.jpg', 'assets/chiikawa3.jpg'],
+    },
+  ];
+  let themeIndex = Math.floor(Math.random() * THEMES.length);
+  let theme = THEMES[themeIndex];
+
+  // 从图片池抽两张不同的图（X 用第一张，O 用第二张）
+  function pickPair(t) {
+    if (!t.pool) return null;
+    const i = Math.floor(Math.random() * t.pool.length);
+    let j = Math.floor(Math.random() * (t.pool.length - 1));
+    if (j >= i) j++;
+    return [t.pool[i], t.pool[j]];
+  }
+  let pair = pickPair(theme);
+
+  const pieceHtml = () => {
+    if (theme.pool) {
+      return `<img class="piece piece-img piece-x" src="${pair[0]}" alt="">` +
+             `<img class="piece piece-img piece-o" src="${pair[1]}" alt="">`;
+    }
+    return `<svg class="piece piece-x" viewBox="0 0 100 100" aria-hidden="true">${theme.x}</svg>` +
+           `<svg class="piece piece-o" viewBox="0 0 100 100" aria-hidden="true">${theme.o}</svg>`;
+  };
+
+  // 房主把主题（含奶茶系列的抽图结果）同步给加入方，双方显示同一套棋子
+  function applyTheme(idx, pairData) {
+    if (!THEMES[idx]) return;
+    themeIndex = idx;
+    theme = THEMES[idx];
+    pair = Array.isArray(pairData) && pairData.length === 2 ? pairData : pickPair(theme);
+    $('board').dataset.theme = theme.board;
+    cells.forEach(c => { c.innerHTML = pieceHtml(); });   // data-mark 仍在，替换后棋子重新弹入
+    if (session) render(session.getState());              // 刷新状态栏里的小图章
+  }
+
+  // 状态栏/顶栏的小图章也用当前主题的角色，一眼认出自己是谁
+  const chip = m => {
+    if (theme.pool) {
+      return `<span class="chip chip-plain"><img class="chip-piece" src="${m === 'X' ? pair[0] : pair[1]}" alt=""></span>`;
+    }
+    return `<span class="chip ${m === 'X' ? 'cx' : 'co'}">` +
+      `<svg class="chip-piece" viewBox="0 0 100 100" aria-hidden="true">${m === 'X' ? theme.x : theme.o}</svg></span>`;
+  };
+
+  // 图片缺失兜底（如部署环境没带 assets）：棋子退回经典 ✕○、图章退回字母，保证永远可玩
+  const FALLBACK_SVG = m =>
+    `<svg class="piece piece-${m === 'X' ? 'x' : 'o'}" viewBox="0 0 100 100" aria-hidden="true">${THEMES[0][m === 'X' ? 'x' : 'o']}</svg>`;
+  document.addEventListener('error', e => {
+    const t = e.target;
+    if (!t || t.tagName !== 'IMG') return;
+    if (t.classList.contains('piece')) {
+      const html = FALLBACK_SVG(t.classList.contains('piece-x') ? 'X' : 'O');
+      t.outerHTML = html;
+    } else if (t.classList.contains('chip-piece')) {
+      t.replaceWith(document.createTextNode(t.getAttribute('src') === pair[0] ? 'X' : 'O'));
+    }
+  }, true);
 
   let peer = null, conn = null, session = null;
   let isHost = false;
@@ -734,15 +815,12 @@
   }
 
   /* ---------- 棋盘渲染 ---------- */
+  $('board').dataset.theme = theme.board;   // 棋盘配色跟随主题
   const cells = Array.from({ length: 9 }, (_, i) => {
     const btn = document.createElement('button');
     btn.className = 'cell';
     btn.setAttribute('aria-label', `第 ${i + 1} 格`);
-    btn.innerHTML =
-      '<svg class="mark mark-x" viewBox="0 0 100 100" aria-hidden="true">' +
-      '<line x1="27" y1="27" x2="73" y2="73"/><line x1="73" y1="27" x2="27" y2="73"/></svg>' +
-      '<svg class="mark mark-o" viewBox="0 0 100 100" aria-hidden="true">' +
-      '<circle cx="50" cy="50" r="26"/></svg>';
+    btn.innerHTML = pieceHtml();
     btn.addEventListener('click', () => {
       if (session && session.getState().myTurn) {
         if (session.onLocalMove(i)) { pendingSelfSound = true; sfx.move(true); }
@@ -983,13 +1061,19 @@
     conn.on('open', () => {
       if (hasOpponent) return;                 // 防抖：重复 open
       hasOpponent = true;
-      if (isHost) conn.send({ type: 'config', series: chosenSeries });   // 下发系列赛配置
+      if (isHost) {
+        // 下发系列赛配置、棋子主题与奶茶系列的抽图结果
+        conn.send({ type: 'config', series: chosenSeries, theme: themeIndex, pair: pair || undefined });
+      }
       startSession();
     });
     conn.on('data', d => {
       if (!d || typeof d !== 'object') return;
       if (d.type === 'chat') handleChatMsg(d);            // 快捷消息：页面层处理
-      else if (d.type === 'config' && !isHost) applySeries(d.series);
+      else if (d.type === 'config' && !isHost) {
+        applySeries(d.series);
+        applyTheme(d.theme, d.pair);   // 跟随房主的棋子主题与抽图
+      }
       else if (d.type === 'series-reset') resetSeriesScores();
       else if (session) session.onRemoteMsg(d);           // 棋局消息进状态机
     });
