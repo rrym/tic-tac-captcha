@@ -300,6 +300,18 @@
     .mode-btn { font-size: 13px; }
     h1 { font-size: 26px; }
   }
+  header a.online-link {
+    display: inline-block;
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--x);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    padding: 4px 14px;
+    border-radius: 99px;
+    transition: background .15s;
+  }
+  header a.online-link:hover { background: var(--surface-2); }
 </style>
 </head>
 <body>
@@ -307,6 +319,7 @@
   <header>
     <h1>井字棋</h1>
     <p class="subtitle">Tic-Tac-Toe</p>
+    <a class="online-link" href="./online.html">🌐 在线对战</a>
   </header>
 
   <div class="mode-switch" role="radiogroup" aria-label="游戏模式">

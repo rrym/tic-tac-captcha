@@ -18,19 +18,23 @@
 - **框架无关**：提供 ESM / UMD / 全局脚本三种核心产物
 - **Vue 3 组件**：一个标签 `<TicTacCaptcha popup @verified="..." />` 接入（也适配 CDN 场景）
 - **弹窗 / 内嵌两种模式**：弹窗模式只占一行触发按钮，点击后弹出验证窗口
+- **🌐 在线双人对战**：WebRTC P2P 直连，创建房间分享链接即可开打，无需服务器（`examples/online.html`）
 - **自适应深色模式**、移动端可用
 - 棋子落子有 SVG 描边动画、获胜连线高亮
 
 ## 在线示例
 
-双击 `examples/` 下的 HTML 即可在浏览器体验（`vue3-cdn.html` 需联网加载 Vue）：
+GitHub Pages 已部署，直接点击体验：
 
-| 文件 | 内容 |
-| --- | --- |
-| `examples/vanilla.html` | 最简接入：内嵌 + 弹窗两种模式 |
-| `examples/login.html` | 完整登录/注册表单 + 验证码拦截 |
-| `examples/vue3-cdn.html` | Vue 3（CDN 方式）接入 |
-| `examples/game.html` | 井字棋游戏本体（组件的出身之地） |
+| 页面 | 链接 | 说明 |
+| --- | --- | --- |
+| 🌐 在线双人对战 | [examples/online.html](https://rrym.github.io/tic-tac-captcha/examples/online.html) | 创建房间 → 分享链接/房间码 → 与朋友浏览器直连对战 |
+| 验证码最简接入 | [examples/vanilla.html](https://rrym.github.io/tic-tac-captcha/examples/vanilla.html) | 内嵌 + 弹窗两种模式 |
+| 登录/注册表单 | [examples/login.html](https://rrym.github.io/tic-tac-captcha/examples/login.html) | 完整表单 + 验证码拦截 |
+| Vue 3（CDN） | [examples/vue3-cdn.html](https://rrym.github.io/tic-tac-captcha/examples/vue3-cdn.html) | Vue 3 接入方式 |
+| 井字棋游戏 | [examples/game.html](https://rrym.github.io/tic-tac-captcha/examples/game.html) | 组件的出身之地（双人同屏 / 人机） |
+
+> 在线对战基于 PeerJS 免费 信令 + WebRTC 直连，落子数据不经过任何服务器；极少数严格 NAT 网络环境下可能连接失败。对局同步逻辑见 `examples/online-core.js`（独立状态机，`test/online.js` 覆盖 22 项双端对局断言）。
 
 ## 快速开始
 
@@ -148,8 +152,10 @@ function retry() { captcha.value.reset(); }
 │   └── vue3.js        # Vue 3 组件封装
 ├── dist/              # 预构建产物（由 scripts/build.js 生成）
 ├── scripts/build.js   # 零依赖构建脚本
-├── test/run.js        # 模拟 DOM 的行为测试（31+ 断言）
-└── examples/          # vanilla / login / vue3-cdn / game
+├── test/
+│   ├── run.js         # 验证码行为测试（模拟 DOM + 可控随机数，32 项）
+│   └── online.js      # 在线对战状态机双端对局测试（22 项）
+└── examples/          # online / vanilla / login / vue3-cdn / game
 ```
 
 ## 开发

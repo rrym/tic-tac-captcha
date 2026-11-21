@@ -35,7 +35,7 @@
   ],
   "scripts": {
     "build": "node scripts/build.js",
-    "test": "node test/run.js"
+    "test": "node test/run.js && node test/online.js"
   },
   "repository": {
     "type": "git",

@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>井字棋 · 在线对战</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #eef2f7;
+    --bg-accent: #dbe4f0;
+    --surface: #ffffff;
+    --surface-2: #f4f6fa;
+    --text: #1e2430;
+    --text-dim: #6b7280;
+    --border: #e3e8f0;
+    --x: #2563eb;
+    --o: #e11d48;
+    --win-bg: #fdf0c8;
+    --win-border: #e9c46a;
+    --shadow: 0 10px 30px rgba(30, 41, 59, .08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1420;
+      --bg-accent: #1a2233;
+      --surface: #1a2130;
+      --surface-2: #222b3e;
+      --text: #e8ecf4;
+      --text-dim: #8b95a8;
+      --border: #2c3750;
+      --x: #60a5fa;
+      --o: #fb7185;
+      --win-bg: rgba(250, 204, 21, .13);
+      --win-border: rgba(250, 204, 21, .45);
+      --shadow: 0 10px 30px rgba(0, 0, 0, .4);
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background:
+      radial-gradient(1100px 560px at 18% -12%, var(--bg-accent), transparent),
+      var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 36px 16px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .app {
+    width: min(92vw, 440px);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .app > * { flex: 0 0 auto; }
+
+  header { text-align: center; }
+  h1 {
+    font-size: 26px;
+    letter-spacing: 2px;
+    background: linear-gradient(120deg, var(--x), var(--o));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .subtitle { margin-top: 6px; font-size: 13px; color: var(--text-dim); }
+
+  .hidden { display: none !important; }
+
+  /* ---------- 卡片（大厅 / 等待） ---------- */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 22px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    text-align: center;
+  }
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+  .join-row { display: flex; gap: 10px; }
+  .join-row input {
+    flex: 1;
+    min-width: 0;
+    padding: 11px 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: 18px;
+    letter-spacing: 6px;
+    text-align: center;
+    text-transform: uppercase;
+    font-family: inherit;
+    outline: none;
+  }
+  .join-row input:focus { border-color: var(--x); }
+  .hint { font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+  .err { font-size: 13px; color: #dc2626; min-height: 18px; }
+  .back { font-size: 13px; }
+  .back a { color: var(--x); text-decoration: none; }
+
+  /* 等待房间 */
+  .code {
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: 12px;
+    padding-left: 12px; /* 抵消最后一个字符的间距 */
+    font-variant-numeric: tabular-nums;
+  }
+  .link-row { display: flex; gap: 8px; }
+  .link-row input {
+    flex: 1;
+    min-width: 0;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-2);
+    color: var(--text-dim);
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+  }
+  .waiting-text { font-size: 14px; color: var(--text-dim); }
+  .spinner {
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    vertical-align: -2px;
+    border: 2px solid var(--border);
+    border-top-color: var(--x);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- 按钮 ---------- */
+  .btn {
+    padding: 12px 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform .12s, opacity .15s, background .15s;
+  }
+  .btn:hover { background: var(--surface-2); }
+  .btn:active { transform: scale(.97); }
+  .btn.primary {
+    background: var(--text);
+    border-color: var(--text);
+    color: var(--bg);
+    font-weight: 600;
+  }
+  .btn.primary:hover { opacity: .9; background: var(--text); }
+  .btn.big { font-size: 16px; padding: 14px 0; }
+
+  /* ---------- 对局 ---------- */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 14px;
+  }
+  .who { font-weight: 700; }
+  .round-no { color: var(--text-dim); font-size: 13px; }
+  .btn.small { padding: 7px 14px; font-size: 13px; border-radius: 10px; }
+
+  .status {
+    min-height: 26px;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    font-size: 14px;
+    font-weight: 800;
+    color: #fff;
+  }
+  .chip.cx { background: var(--x); }
+  .chip.co { background: var(--o); }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    padding: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+  }
+  .cell {
+    position: relative;
+    aspect-ratio: 1;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: var(--surface-2);
+    cursor: pointer;
+    transition: background .15s, transform .12s, border-color .2s;
+    padding: 0;
+  }
+  .board:not(.locked) .cell:not([data-mark]):hover {
+    background: #e9eef6;
+    transform: translateY(-1px);
+  }
+  @media (prefers-color-scheme: dark) {
+    .board:not(.locked) .cell:not([data-mark]):hover { background: #2a3550; }
+  }
+  .board.locked .cell { cursor: default; }
+
+  .mark {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s, transform .25s;
+  }
+  .mark-x line {
+    --len: 68;
+    stroke: var(--x);
+    stroke-width: 10;
+    stroke-linecap: round;
+    fill: none;
+    stroke-dasharray: var(--len);
+    stroke-dashoffset: 0;
+  }
+  .mark-o circle {
+    --len: 164;
+    stroke: var(--o);
+    stroke-width: 10;
+    fill: none;
+    stroke-dasharray: var(--len);
+    stroke-dashoffset: 0;
+  }
+  .cell[data-mark="X"] .mark-x,
+  .cell[data-mark="O"] .mark-o { opacity: 1; }
+  .cell[data-mark] .mark-x line,
+  .cell[data-mark] .mark-o circle { stroke-dashoffset: var(--len); }
+  .cell[data-mark="X"] .mark-x line { animation: draw .3s ease-out forwards; }
+  .cell[data-mark="X"] .mark-x line:last-child { animation-delay: .16s; }
+  .cell[data-mark="O"] .mark-o circle { animation: draw .42s ease-out forwards; }
+  @keyframes draw {
+    from { stroke-dashoffset: var(--len); }
+    to   { stroke-dashoffset: 0; }
+  }
+  .cell.win-cell { background: var(--win-bg); border-color: var(--win-border); }
+  .cell.win-cell .mark { transform: scale(1.1); }
+  .board.win .cell:not(.win-cell) .mark { opacity: .28; }
+
+  .actions { display: flex; gap: 10px; }
+
+  /* ---------- 结果弹窗 ---------- */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 20, 32, .55);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s;
+    z-index: 10;
+  }
+  .modal-overlay.show { opacity: 1; pointer-events: auto; }
+  .modal {
+    width: min(86vw, 320px);
+    padding: 30px 24px 22px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .3);
+    text-align: center;
+    transform: translateY(14px) scale(.95);
+    transition: transform .28s cubic-bezier(.34, 1.4, .64, 1);
+  }
+  .modal-overlay.show .modal { transform: none; }
+  .result-emoji { font-size: 48px; line-height: 1; }
+  .result-title { margin: 14px 0 4px; font-size: 24px; }
+  .result-sub { font-size: 13px; color: var(--text-dim); }
+  .modal .actions { margin-top: 20px; }
+</style>
+</head>
+<body>
+<main class="app">
+  <header>
+    <h1>井字棋 · 在线对战</h1>
+    <p class="subtitle">创建房间，把链接发给朋友，浏览器直连（P2P）</p>
+  </header>
+
+  <!-- 大厅 -->
+  <section class="card" id="lobby">
+    <button class="btn primary big" id="createBtn">🔗 创建房间</button>
+    <div class="divider">或输入房间码加入</div>
+    <div class="join-row">
+      <input id="codeInput" maxlength="4" placeholder="ABCD" autocomplete="off">
+      <button class="btn" id="joinBtn">加入</button>
+    </div>
+    <p class="hint">无需服务器与账号：房间码由 WebRTC 信令服务撮合，落子数据在两位玩家浏览器之间直连传输。</p>
+    <p class="err" id="lobbyErr"></p>
+    <p class="back"><a href="./game.html">← 返回单机版</a></p>
+  </section>
+
+  <!-- 等待对方 -->
+  <section class="card hidden" id="waiting">
+    <p class="hint">把房间码或链接发给对方</p>
+    <div class="code" id="roomCode">----</div>
+    <div class="link-row">
+      <input id="shareLink" readonly>
+      <button class="btn small" id="copyBtn" style="flex:0 0 auto;">复制链接</button>
+    </div>
+    <p class="waiting-text"><span class="spinner"></span> 等待对方加入…</p>
+    <button class="btn" id="cancelBtn">取消</button>
+  </section>
+
+  <!-- 对局 -->
+  <section class="hidden" id="game">
+    <div class="topbar">
+      <span class="who" id="who"></span>
+      <span class="round-no" id="roundNo"></span>
+      <button class="btn small" id="leaveBtn">离开</button>
+    </div>
+    <div class="status" id="status"></div>
+    <section class="board" id="board" aria-label="井字棋棋盘"></section>
+    <div class="actions">
+      <button class="btn primary hidden" id="rematchBtn">再来一局（换先手）</button>
+    </div>
+  </section>
+</main>
+
+<!-- 结果弹窗 -->
+<div class="modal-overlay" id="resultModal" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="result-emoji" id="resultEmoji"></div>
+    <h2 class="result-title" id="resultTitle"></h2>
+    <p class="result-sub">下一局双方执子轮换</p>
+    <div class="actions">
+      <button class="btn primary" id="modalAgain">再来一局</button>
+      <button class="btn" id="modalClose">查看棋盘</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="./online-core.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  const $ = id => document.getElementById(id);
+  const chip = m => `<span class="chip ${m === 'X' ? 'cx' : 'co'}">${m}</span>`;
+  const CODE_RE = new RegExp('^[' + TTTOnline.CODE_CHARS + ']{4}$');
+  const PEER_PREFIX = 'tttc-v1-';
+
+  let peer = null, conn = null, session = null;
+  let isHost = false;
+  let lastState = null;
+
+  /* ---------- 界面切换 ---------- */
+  const show = (id, on) => $(id).classList.toggle('hidden', !on);
+  const lobbyErr = t => { $('lobbyErr').textContent = t || ''; };
+
+  function backToLobby() {
+    cleanup();
+    show('lobby', true); show('waiting', false); show('game', false);
+    $('resultModal').classList.remove('show');
+  }
+
+  function cleanup() {
+    try { if (conn) conn.close(); } catch (e) {}
+    try { if (peer) peer.destroy(); } catch (e) {}
+    conn = null; peer = null; session = null; lastState = null;
+  }
+
+  /* ---------- 棋盘渲染 ---------- */
+  const cells = Array.from({ length: 9 }, (_, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'cell';
+    btn.setAttribute('aria-label', `第 ${i + 1} 格`);
+    btn.innerHTML =
+      '<svg class="mark mark-x" viewBox="0 0 100 100" aria-hidden="true">' +
+      '<line x1="27" y1="27" x2="73" y2="73"/><line x1="73" y1="27" x2="27" y2="73"/></svg>' +
+      '<svg class="mark mark-o" viewBox="0 0 100 100" aria-hidden="true">' +
+      '<circle cx="50" cy="50" r="26"/></svg>';
+    btn.addEventListener('click', () => {
+      if (session && lastState && lastState.myTurn) session.onLocalMove(i);
+    });
+    $('board').appendChild(btn);
+    return btn;
+  });
+
+  function render(st) {
+    lastState = st;
+    st.board.forEach((m, i) => {
+      if (m) cells[i].dataset.mark = m;
+      else delete cells[i].dataset.mark;
+      cells[i].classList.toggle('win-cell', !!(st.over && st.line && st.line.includes(i)));
+    });
+    $('board').classList.toggle('win', !!(st.over && st.line));
+    $('board').classList.toggle('locked', st.over || !st.myTurn);
+    $('who').innerHTML = `你执 ${chip(st.myMark)}`;
+    $('roundNo').textContent = `第 ${st.round + 1} 局`;
+    $('rematchBtn').classList.toggle('hidden', !st.over);
+
+    const statusEl = $('status');
+    if (st.over) {
+      statusEl.innerHTML = st.winner
+        ? (st.winner === st.myMark ? '🎉 你赢了！' : '对方获胜')
+        : '🤝 平局！';
+    } else {
+      statusEl.innerHTML = st.myTurn
+        ? `轮到你落子 ${chip(st.myMark)}`
+        : `等待对方落子…（对方 ${chip(st.myMark === 'X' ? 'O' : 'X')}）`;
+    }
+  }
+
+  function showResult(e) {
+    if (e.draw) {
+      $('resultEmoji').textContent = '🤝';
+      $('resultTitle').textContent = '平局！';
+    } else if (e.iWon) {
+      $('resultEmoji').textContent = '🎉';
+      $('resultTitle').textContent = '你赢了！';
+    } else {
+      $('resultEmoji').textContent = '😅';
+      $('resultTitle').textContent = '对方获胜';
+    }
+    $('resultModal').classList.add('show');
+  }
+
+  /* ---------- 开始对局（连接建立后调用） ---------- */
+  function startSession() {
+    show('lobby', false); show('waiting', false); show('game', true);
+    lobbyErr('');
+    session = TTTOnline.createSession({
+      isHost,
+      send: m => { if (conn && conn.open) conn.send(m); },
+      onEvent: e => {
+        if (e.type === 'state') render(e.state);
+        else if (e.type === 'result') showResult(e);
+      },
+    });
+  }
+
+  /* ---------- 连接 ---------- */
+  function wireConn() {
+    conn.on('open', startSession);
+    conn.on('data', d => { if (session) session.onRemoteMsg(d); });
+    conn.on('close', () => onPeerLeft());
+    conn.on('error', () => onPeerLeft());
+    if (!isHost) {
+      // 加入侧兜底：信令通了但 P2P 通道建不起来时提示
+      setTimeout(() => {
+        if (!session) {
+          lobbyErr('连接超时：请确认房间码正确、房主页面仍开着；若多次失败可能是网络环境限制了 P2P 直连');
+          backToLobby();
+        }
+      }, 15000);
+    }
+  }
+
+  function onPeerLeft() {
+    if (!session) return;
+    session = null;
+    $('board').classList.add('locked');
+    $('status').innerHTML = '对方已离开';
+    $('rematchBtn').classList.add('hidden');
+    $('resultModal').classList.remove('show');
+  }
+
+  /* ---------- 房主：创建房间 ---------- */
+  function createRoom(retry) {
+    cleanup();
+    isHost = true;
+    const code = TTTOnline.randomRoomCode(4);
+    peer = new Peer(PEER_PREFIX + code, { debug: 1 });
+
+    peer.on('open', () => {
+      show('lobby', false); show('waiting', true);
+      $('roomCode').textContent = code;
+      $('shareLink').value = location.origin + location.pathname + '?room=' + code;
+    });
+    peer.on('connection', c => {
+      if (conn && conn.open) { c.close(); return; }   // 已有对手，拒绝第三人
+      conn = c;
+      wireConn();
+    });
+    peer.on('error', e => {
+      if (e.type === 'unavailable-id' && retry > 0) { createRoom(retry - 1); } // 房间码撞了，换一个
+      else if (!session) { lobbyErr('网络错误：' + e.type); backToLobby(); }
+    });
+  }
+
+  /* ---------- 加入方 ---------- */
+  function joinRoom(code) {
+    cleanup();
+    isHost = false;
+    show('lobby', true); show('waiting', false);
+    lobbyErr('连接中…');
+    peer = new Peer({ debug: 1 });
+    peer.on('open', () => {
+      conn = peer.connect(PEER_PREFIX + code, { reliable: true });
+      wireConn();
+    });
+    peer.on('error', e => {
+      if (e.type === 'peer-unavailable') lobbyErr('房间不存在，或房主已关闭页面');
+      else lobbyErr('网络错误：' + e.type);
+    });
+  }
+
+  /* ---------- 事件绑定 ---------- */
+  $('createBtn').addEventListener('click', () => createRoom(3));
+  $('cancelBtn').addEventListener('click', backToLobby);
+  $('leaveBtn').addEventListener('click', backToLobby);
+
+  $('joinBtn').addEventListener('click', () => {
+    const code = $('codeInput').value.trim().toUpperCase();
+    if (!CODE_RE.test(code)) { lobbyErr('请输入 4 位房间码（字母 I L O 和数字 0 1 除外）'); return; }
+    joinRoom(code);
+  });
+  $('codeInput').addEventListener('input', () => lobbyErr(''));
+  $('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('joinBtn').click(); });
+
+  $('copyBtn').addEventListener('click', () => {
+    const link = $('shareLink').value;
+    const done = () => { $('copyBtn').textContent = '已复制 ✓'; setTimeout(() => { $('copyBtn').textContent = '复制链接'; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link).then(done).catch(() => fallbackCopy(link, done));
+    } else {
+      fallbackCopy(link, done);
+    }
+  });
+  function fallbackCopy(text, done) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  const rematch = () => {
+    if (session && lastState && lastState.over) session.rematch();
+    $('resultModal').classList.remove('show');
+  };
+  $('rematchBtn').addEventListener('click', rematch);
+  $('modalAgain').addEventListener('click', rematch);
+  $('modalClose').addEventListener('click', () => $('resultModal').classList.remove('show'));
+
+  // 关页面时尽快通知对方
+  window.addEventListener('beforeunload', () => {
+    try { if (conn) conn.close(); } catch (e) {}
+  });
+
+  /* ---------- 通过 ?room=XXXX 链接直达 ---------- */
+  const params = new URLSearchParams(location.search);
+  const roomParam = (params.get('room') || '').toUpperCase();
+  if (CODE_RE.test(roomParam)) {
+    $('codeInput').value = roomParam;
+    joinRoom(roomParam);
+  }
+})();
+</script>
+</body>
+</html>
