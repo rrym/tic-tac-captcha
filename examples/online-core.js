@@ -70,17 +70,20 @@
     }
     function emitState() { onEvent({ type: 'state', state: snapshot() }); }
 
-    function finishCheck() {
-      var r = getWinner(board);
-      if (!r) return;
+    function endGame(w, line) {
       over = true;
-      winner = r.winner;
-      winLine = r.line;
+      winner = w;
+      winLine = line || null;
       emitState();   // 先让 UI 拿到 over/line 的最终状态（高亮、按钮开关都依赖它）
       onEvent({
-        type: 'result', winner: r.winner, line: r.line,
-        iWon: r.winner === myMark(), draw: r.winner === null,
+        type: 'result', winner: w, line: winLine,
+        iWon: w === myMark(), draw: w === null,
       });
+    }
+
+    function finishCheck() {
+      var r = getWinner(board);
+      if (r) endGame(r.winner, r.line);
     }
 
     function applyMove(i, mark) {

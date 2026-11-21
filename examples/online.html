@@ -46,6 +46,7 @@
       var(--bg);
     color: var(--text);
     min-height: 100vh;
+    min-height: 100dvh;   /* iOS Safari 地址栏收起/展开时不跳动 */
     display: flex;
     justify-content: center;
     padding: 36px 16px;
@@ -72,6 +73,9 @@
   .subtitle { margin-top: 6px; font-size: 13px; color: var(--text-dim); }
 
   .hidden { display: none !important; }
+
+  /* 对局区内部纵向布局与间距（修复棋盘与比分栏贴边/视觉重叠） */
+  #game { display: flex; flex-direction: column; gap: 16px; }
 
   /* ---------- 卡片（大厅 / 等待） ---------- */
   .card {
@@ -141,6 +145,8 @@
     font-family: inherit;
     outline: none;
   }
+  .code-actions { display: flex; gap: 10px; }
+  .code-actions .btn { flex: 1; }
   .waiting-text { font-size: 14px; color: var(--text-dim); }
   .spinner {
     display: inline-block;
@@ -153,6 +159,29 @@
     animation: spin .8s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 系列赛模式选择 */
+  .series-switch {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .seg {
+    flex: 1;
+    padding: 8px 2px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .seg.active { background: var(--text); color: var(--bg); font-weight: 600; }
 
   /* ---------- 按钮 ---------- */
   .btn {
@@ -282,24 +311,162 @@
   .cell.win-cell { background: var(--win-bg); border-color: var(--win-border); }
   .cell.win-cell .mark { transform: scale(1.1); }
   .board.win .cell:not(.win-cell) .mark { opacity: .28; }
+  .board.my-turn {
+    border-color: var(--x);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .15), var(--shadow);
+  }
 
+  /* ---------- 比分栏（对战式：左右大卡 + 中间平局徽章） ---------- */
   .scoreboard {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    display: flex;
+    align-items: stretch;
     gap: 10px;
   }
-  .score {
+  .score-card {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 15px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    transition: border-color .25s, box-shadow .25s;
+  }
+  .score-card .score-name { font-size: 13px; color: var(--text-dim); font-weight: 600; }
+  .score-card .score-num { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .score-card.me.lead { border-color: var(--x); box-shadow: 0 0 0 3px rgba(37, 99, 235, .12); }
+  .score-card.opp.lead { border-color: var(--o); box-shadow: 0 0 0 3px rgba(225, 29, 48, .12); }
+  .score-mid {
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
     gap: 3px;
-    padding: 10px 4px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 13px;
   }
-  .score-label { font-size: 12px; color: var(--text-dim); }
-  .score-num { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .score-mid .score-label { font-size: 11px; color: var(--text-dim); }
+  .score-mid .score-draw {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-dim);
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed var(--border);
+    border-radius: 50%;
+    font-variant-numeric: tabular-nums;
+  }
+  .score-num.pop, .score-draw.pop { animation: score-pop .35s ease-out; }
+  @keyframes score-pop { 40% { transform: scale(1.4); } }
+
+  /* 连胜徽章（≥2 连胜显示） */
+  .streak {
+    display: inline-block;
+    margin-left: 5px;
+    padding: 1px 8px;
+    border-radius: 99px;
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    vertical-align: 1px;
+    animation: streak-in .3s cubic-bezier(.34, 1.56, .64, 1);
+  }
+  @keyframes streak-in { from { transform: scale(0); } to { transform: scale(1); } }
+
+  /* 胜利彩带画布 */
+  .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
+
+  /* 落子涟漪 */
+  .cell.ripple::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 15px;
+    border: 2px solid var(--text);
+    opacity: 0;
+    pointer-events: none;
+    animation: ripple .45s ease-out forwards;
+  }
+  .cell[data-mark="X"].ripple::after { border-color: var(--x); }
+  .cell[data-mark="O"].ripple::after { border-color: var(--o); }
+  @keyframes ripple {
+    from { transform: scale(.55); opacity: .85; }
+    to   { transform: scale(1.28); opacity: 0; }
+  }
+
+  /* 系列赛进度点（BO3/BO5 时显示） */
+  .series-progress {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+  }
+  .series-progress .pips { display: flex; gap: 4px; }
+  .pip { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+  .pip.on-me { background: var(--x); }
+  .pip.on-opp { background: var(--o); }
+  .vs-sep { font-size: 10px; color: var(--text-dim); margin: 0 5px; }
+
+  /* ---------- 快捷消息（仅表情与固定短语，无文字输入） ---------- */
+  .chat-bar {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 2px;
+    scrollbar-width: none;
+  }
+  .chat-bar::-webkit-scrollbar { display: none; }
+  .chat-btn {
+    flex: 0 0 auto;
+    padding: 7px 13px;
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background .15s, transform .1s;
+  }
+  .chat-btn:hover { background: var(--surface-2); }
+  .chat-btn:active { transform: scale(.94); }
+  .chat-stack {
+    position: fixed;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    z-index: 50;
+    pointer-events: none;
+    width: max-content;
+    max-width: 86vw;
+  }
+  .chat-bubble {
+    background: var(--text);
+    color: var(--bg);
+    padding: 9px 18px;
+    border-radius: 99px;
+    font-size: 14px;
+    font-weight: 600;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    animation: bubble-in .22s ease-out;
+    transition: opacity .25s, transform .25s;
+  }
+  .chat-bubble.out { opacity: 0; transform: translateY(-6px); }
+  @keyframes bubble-in {
+    from { opacity: 0; transform: translateY(-8px); }
+    to   { opacity: 1; transform: none; }
+  }
 
   .actions { display: flex; gap: 10px; }
   .modal .actions .btn { flex: 1; }   /* 弹窗内两按钮等宽平分，整体居中 */
@@ -309,6 +476,7 @@
     position: fixed;
     inset: 0;
     background: rgba(15, 20, 32, .55);
+    -webkit-backdrop-filter: blur(4px);   /* iOS Safari 前缀 */
     backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
@@ -335,6 +503,19 @@
   .result-title { margin: 14px 0 4px; font-size: 24px; }
   .result-sub { font-size: 13px; color: var(--text-dim); }
   .modal .actions { margin-top: 20px; }
+
+  /* ---------- 小屏手机适配 ---------- */
+  @media (max-width: 380px) {
+    .topbar { flex-wrap: wrap; row-gap: 8px; }
+    .who { font-size: 13px; }
+    .round-no { font-size: 12px; }
+    .status { font-size: 15px; }
+    .score-card { padding: 10px 12px; }
+    .score-card .score-num { font-size: 20px; }
+    .chat-btn { padding: 6px 11px; font-size: 12px; }
+    .btn.small { padding: 6px 10px; font-size: 12px; }
+    .code { font-size: 32px; letter-spacing: 9px; }
+  }
 </style>
 </head>
 <body>
@@ -352,6 +533,11 @@
       <input id="codeInput" maxlength="4" placeholder="ABCD" autocomplete="off">
       <button class="btn" id="joinBtn">加入</button>
     </div>
+    <div class="series-switch" role="radiogroup" aria-label="对局模式（房主选择，加入方跟随）">
+      <button type="button" class="seg active" data-series="0">无限对局</button>
+      <button type="button" class="seg" data-series="2">三局两胜</button>
+      <button type="button" class="seg" data-series="3">五局三胜</button>
+    </div>
     <p class="hint">无需服务器与账号：房间码由 WebRTC 信令服务撮合，落子数据在两位玩家浏览器之间直连传输。</p>
     <p class="err" id="lobbyErr"></p>
   </section>
@@ -364,6 +550,10 @@
       <input id="shareLink" readonly>
       <button class="btn small" id="copyBtn" style="flex:0 0 auto;">复制链接</button>
     </div>
+    <div class="code-actions">
+      <button class="btn small" id="copyCodeBtn">复制房间码</button>
+      <button class="btn small hidden" id="shareBtn">📤 分享邀请</button>
+    </div>
     <p class="waiting-text"><span class="spinner"></span> 等待对方加入…</p>
     <button class="btn" id="cancelBtn">取消</button>
   </section>
@@ -373,22 +563,38 @@
     <div class="topbar">
       <span class="who" id="who"></span>
       <span class="round-no" id="roundNo"></span>
+      <button class="btn small" id="muteBtn" title="音效开关">🔊</button>
       <button class="btn small" id="leaveBtn">离开</button>
     </div>
     <div class="status" id="status"></div>
     <section class="board" id="board" aria-label="井字棋棋盘"></section>
 
     <section class="scoreboard">
-      <div class="score"><span class="score-label">你</span><span class="score-num" id="scoreMe">0</span></div>
-      <div class="score"><span class="score-label">平局</span><span class="score-num" id="scoreDraw">0</span></div>
-      <div class="score"><span class="score-label">对方</span><span class="score-num" id="scoreOpp">0</span></div>
+      <div class="score-card me" id="scoreCardMe">
+        <span class="score-name">你<span class="streak hidden" id="streakMe"></span></span>
+        <span class="score-num" id="scoreMe">0</span>
+      </div>
+      <div class="score-mid">
+        <span class="score-label">平局</span>
+        <span class="score-draw" id="scoreDraw">0</span>
+      </div>
+      <div class="score-card opp" id="scoreCardOpp">
+        <span class="score-num" id="scoreOpp">0</span>
+        <span class="score-name"><span class="streak hidden" id="streakOpp"></span>对方</span>
+      </div>
     </section>
+    <div class="series-progress hidden" id="seriesProgress"></div>
+
+    <div class="chat-bar" id="chatBar" aria-label="快捷消息"></div>
 
     <div class="actions">
       <button class="btn primary hidden" id="rematchBtn">再来一局（换先手）</button>
     </div>
   </section>
 </main>
+
+<!-- 快捷消息气泡栈（最多保留 3 条，自动淡出） -->
+<div class="chat-stack" id="chatStack"></div>
 
 <!-- 结果弹窗 -->
 <div class="modal-overlay" id="resultModal" role="dialog" aria-modal="true">
@@ -416,8 +622,15 @@
 
   let peer = null, conn = null, session = null;
   let isHost = false;
-  let lastState = null;
+  let hasOpponent = false;               // 已有对手连接（防并发加入竞态）
   let wins = 0, draws = 0, losses = 0;   // 本次连接内的战绩
+  let myStreak = 0, oppStreak = 0;       // 连胜计数（平局/输局即熄灭）
+  let chosenSeries = 0;                  // 房主在大厅选择的系列赛目标（0 = 无限对局）
+  let seriesTarget = 0;                  // 本场系列赛目标（由房主连接后下发）
+  let seriesEnded = false;               // 系列赛是否已分出冠军
+  let prevBoard = [];                    // 上一帧棋盘：定位新落子格（涟漪 + 音效）
+  let pendingSelfSound = false;          // 本方落子音效由点击处直接播，渲染层跳过
+  let chatRound = -1;                    // 表情栏当前对应的局号（每局洗牌一次）
 
   /* ---------- 界面切换 ---------- */
   const show = (id, on) => $(id).classList.toggle('hidden', !on);
@@ -432,7 +645,92 @@
   function cleanup() {
     try { if (conn) conn.close(); } catch (e) {}
     try { if (peer) peer.destroy(); } catch (e) {}
-    conn = null; peer = null; session = null; lastState = null;
+    conn = null; peer = null; session = null;
+    hasOpponent = false; seriesEnded = false;
+    prevBoard = []; pendingSelfSound = false; chatRound = -1;
+    myStreak = 0; oppStreak = 0;
+  }
+
+  /* ---------- 音效（WebAudio 现场合成，零素材；🔊 一键静音） ---------- */
+  let audioCtx = null;
+  let muted = false;
+  try { muted = localStorage.getItem('tttc-muted') === '1'; } catch (e) {}
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audioCtx = null; }
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function tone(freq, when, dur, type, vol) {
+    if (!audioCtx || muted) return;
+    const t = audioCtx.currentTime + when;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type || 'triangle';
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(vol || 0.06, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g);
+    g.connect(audioCtx.destination);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+  const sfx = {
+    move(mine) { ensureAudio(); tone(mine ? 560 : 420, 0, 0.09, 'triangle', 0.05); },
+    win()  { ensureAudio(); [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.09, 0.18, 'triangle', 0.06)); },
+    lose() { ensureAudio(); tone(330, 0, 0.22, 'sawtooth', 0.035); tone(220, 0.18, 0.32, 'sawtooth', 0.035); },
+    draw() { ensureAudio(); tone(440, 0, 0.16, 'sine', 0.05); tone(440, 0.2, 0.22, 'sine', 0.05); },
+    chat() { ensureAudio(); tone(880, 0, 0.06, 'sine', 0.04); },
+    join() { ensureAudio(); tone(392, 0, 0.12, 'triangle', 0.05); tone(523, 0.12, 0.2, 'triangle', 0.05); },
+  };
+  document.addEventListener('pointerdown', ensureAudio, { once: true });
+
+  /* ---------- 胜利彩带（canvas 粒子，撒完自动清理） ---------- */
+  function confetti(count) {
+    const canvas = document.createElement('canvas');
+    canvas.className = 'confetti';
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = innerWidth * dpr;
+    canvas.height = innerHeight * dpr;
+    ctx.scale(dpr, dpr);
+    const colors = ['#2563eb', '#e11d48', '#f59e0b', '#10b981', '#8b5cf6', '#fbbf24'];
+    const parts = [];
+    for (let i = 0; i < count; i++) {
+      parts.push({
+        x: Math.random() * innerWidth,
+        y: -20 - Math.random() * innerHeight * 0.4,
+        w: 6 + Math.random() * 5,
+        h: 8 + Math.random() * 6,
+        vx: (Math.random() - 0.5) * 2.2,
+        vy: 2.2 + Math.random() * 3,
+        rot: Math.random() * Math.PI,
+        vr: (Math.random() - 0.5) * 0.25,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+    }
+    const start = performance.now();
+    (function frame(now) {
+      ctx.clearRect(0, 0, innerWidth, innerHeight);
+      let alive = 0;
+      for (const p of parts) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.rot += p.vr;
+        p.vx += Math.sin(now / 300 + p.y / 40) * 0.04;   // 轻微左右飘
+        if (p.y < innerHeight + 30) alive++;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      }
+      if (alive > 0 && now - start < 4000) requestAnimationFrame(frame);
+      else canvas.remove();
+    })(start);
   }
 
   /* ---------- 棋盘渲染 ---------- */
@@ -446,14 +744,22 @@
       '<svg class="mark mark-o" viewBox="0 0 100 100" aria-hidden="true">' +
       '<circle cx="50" cy="50" r="26"/></svg>';
     btn.addEventListener('click', () => {
-      if (session && session.getState().myTurn) session.onLocalMove(i);
+      if (session && session.getState().myTurn) {
+        if (session.onLocalMove(i)) { pendingSelfSound = true; sfx.move(true); }
+      }
     });
     $('board').appendChild(btn);
     return btn;
   });
 
+  function ripple(cell) {
+    cell.classList.remove('ripple');
+    void cell.offsetWidth;   // 强制 reflow 以重启动画
+    cell.classList.add('ripple');
+  }
+
   function render(st) {
-    lastState = st;
+    if (!st.over) $('resultModal').classList.remove('show');   // 对方重开新局时，收掉本方结果弹窗
     st.board.forEach((m, i) => {
       if (m) cells[i].dataset.mark = m;
       else delete cells[i].dataset.mark;
@@ -461,9 +767,28 @@
     });
     $('board').classList.toggle('win', !!(st.over && st.line));
     $('board').classList.toggle('locked', st.over || !st.myTurn);
+    $('board').classList.toggle('my-turn', !st.over && st.myTurn);
     $('who').innerHTML = `你执 ${chip(st.myMark)}`;
-    $('roundNo').textContent = `第 ${st.round + 1} 局`;
-    $('rematchBtn').classList.toggle('hidden', !st.over);
+    $('roundNo').textContent = `第 ${st.round + 1} 局` + (seriesTarget ? ` · BO${seriesTarget * 2 - 1}` : '');
+    $('rematchBtn').classList.toggle('hidden', !st.over || seriesEnded);
+
+    // 新一局开始 → 表情栏重新洗牌（顺序每局都不同）
+    if (st.round !== chatRound) {
+      chatRound = st.round;
+      renderChatBar();
+    }
+
+    // 新落子检测：涟漪 + 音效（本方音效由点击处直接播，跳过）
+    let placedIdx = -1;
+    for (let i = 0; i < 9; i++) {
+      if (st.board[i] && !prevBoard[i]) { placedIdx = i; break; }
+    }
+    prevBoard = st.board.slice();
+    if (placedIdx >= 0) {
+      ripple(cells[placedIdx]);
+      if (pendingSelfSound) pendingSelfSound = false;
+      else sfx.move(false);
+    }
 
     const statusEl = $('status');
     if (st.over) {
@@ -477,10 +802,40 @@
     }
   }
 
-  function updateScore() {
-    $('scoreMe').textContent = wins;
-    $('scoreDraw').textContent = draws;
-    $('scoreOpp').textContent = losses;
+  function updateScore(popSide) {
+    const meEl = $('scoreMe'), drawEl = $('scoreDraw'), oppEl = $('scoreOpp');
+    meEl.textContent = wins;
+    drawEl.textContent = draws;
+    oppEl.textContent = losses;
+    $('scoreCardMe').classList.toggle('lead', wins > losses);
+    $('scoreCardOpp').classList.toggle('lead', losses > wins);
+
+    // 连胜徽章（≥2 连胜显示，被平局/失利打断即消失）
+    const sMe = $('streakMe'), sOpp = $('streakOpp');
+    sMe.textContent = myStreak >= 2 ? '🔥 ' + myStreak : '';
+    sOpp.textContent = oppStreak >= 2 ? '🔥 ' + oppStreak : '';
+    sMe.classList.toggle('hidden', myStreak < 2);
+    sOpp.classList.toggle('hidden', oppStreak < 2);
+
+    if (popSide) {   // 得分数字跳动动画
+      const el = popSide === 'me' ? meEl : popSide === 'opp' ? oppEl : drawEl;
+      el.classList.remove('pop');
+      void el.offsetWidth;   // 强制 reflow 以重启动画
+      el.classList.add('pop');
+    }
+    renderSeriesProgress();
+  }
+
+  function renderSeriesProgress() {
+    const el = $('seriesProgress');
+    if (!seriesTarget) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    let html = '<span class="pips">';
+    for (let i = 0; i < seriesTarget; i++) html += `<span class="pip ${i < wins ? 'on-me' : ''}"></span>`;
+    html += '</span><span class="vs-sep">VS</span><span class="pips">';
+    for (let i = 0; i < seriesTarget; i++) html += `<span class="pip ${i < losses ? 'on-opp' : ''}"></span>`;
+    html += '</span>';
+    el.classList.remove('hidden');
+    el.innerHTML = html;
   }
 
   function showResult(e) {
@@ -497,12 +852,105 @@
       $('resultEmoji').textContent = '😅';
       $('resultTitle').textContent = '对方获胜';
     }
-    updateScore();
-    const st = session ? session.getState() : null;
-    const next = st && st.myMark === 'X' ? 'O' : 'X';
-    $('resultSub').textContent =
-      `战绩：你 ${wins} 胜 · 平 ${draws} · 对方 ${losses} 胜 · 下一局你执 ${next}`;
+    const popSide = e.draw ? 'draw' : e.iWon ? 'me' : 'opp';
+    if (e.draw) {
+      myStreak = 0; oppStreak = 0;
+      sfx.draw();
+    } else if (e.iWon) {
+      myStreak++; oppStreak = 0;
+      sfx.win();
+      confetti(130);                        // 赢一局撒一波
+    } else {
+      oppStreak++; myStreak = 0;
+      sfx.lose();
+    }
+    updateScore(popSide);
+
+    // 系列赛（BO3/BO5）：达到目标胜场 → 冠军弹窗（替代单局弹窗）
+    if (seriesTarget > 0 && (wins >= seriesTarget || losses >= seriesTarget)) {
+      seriesEnded = true;
+      const iWonSeries = wins >= seriesTarget;
+      $('resultEmoji').textContent = iWonSeries ? '🏆' : '🎖️';
+      $('resultTitle').textContent = iWonSeries ? '胜利！' : '落败';
+      $('resultSub').textContent = `最终比分 你 ${wins} : ${losses} 对方（平 ${draws} 局）`;
+      $('modalAgain').textContent = '再来一场';
+      $('rematchBtn').classList.add('hidden');
+      if (iWonSeries) confetti(320);        // 夺冠大撒一波
+    } else {
+      $('modalAgain').textContent = '再来一局';
+      const st = session ? session.getState() : null;
+      const next = st && st.myMark === 'X' ? 'O' : 'X';
+      $('resultSub').textContent =
+        `战绩：你 ${wins} 胜 · 平 ${draws} · 对方 ${losses} 胜 · 下一局你执 ${next}`;
+    }
     $('resultModal').classList.add('show');
+  }
+
+  /* ---------- 快捷消息（仅表情与固定短语，无文字输入；每局随机洗牌） ---------- */
+  const CHATS = [
+    { id: 'haha',   label: '😂 哈哈哈' },
+    { id: 'just',   label: '🤔 就这？' },
+    { id: 'easy',   label: '😎 稳了' },
+    { id: 'please', label: '🙏 手下留情' },
+    { id: 'faster', label: '⚡ 快点快点' },
+    { id: 'nice',   label: '🤝 打得不错' },
+    { id: 'devil',  label: '😈 你完了' },
+    { id: 'think',  label: '🧠 让我想想' },
+    { id: 'sleep',  label: '😴 睡着了？' },
+    { id: 'tea',    label: '🍵 喝口茶慢慢下' },
+  ];
+  let lastChatSentAt = 0, lastChatRecvAt = 0;
+
+  function toastChat(text) {
+    const stack = $('chatStack');
+    const b = document.createElement('div');
+    b.className = 'chat-bubble';
+    b.textContent = text;
+    stack.appendChild(b);
+    while (stack.children.length > 3) stack.removeChild(stack.firstChild);   // 最多保留 3 条
+    setTimeout(() => {
+      b.classList.add('out');
+      setTimeout(() => b.remove(), 300);
+    }, 4000);
+  }
+
+  function shuffled(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // 每局重新洗牌渲染，让顺序每次看起来都不一样
+  function renderChatBar() {
+    const bar = $('chatBar');
+    bar.innerHTML = '';
+    shuffled(CHATS).forEach(c => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chat-btn';
+      b.textContent = c.label;
+      b.addEventListener('click', () => {
+        const now = Date.now();
+        if (!conn || !conn.open || now - lastChatSentAt < 1500) return;  // 发送冷却 1.5s 防刷屏
+        lastChatSentAt = now;
+        conn.send({ type: 'chat', id: c.id });
+        toastChat('你：' + c.label);
+      });
+      bar.appendChild(b);
+    });
+  }
+
+  function handleChatMsg(d) {
+    const c = CHATS.find(x => x.id === d.id);
+    if (!c) return;
+    const now = Date.now();
+    if (now - lastChatRecvAt < 800) return;                            // 接收冷却 0.8s
+    lastChatRecvAt = now;
+    sfx.chat();
+    toastChat('对方：' + c.label);
   }
 
   /* ---------- 开始对局（连接建立后调用） ---------- */
@@ -510,7 +958,16 @@
     show('lobby', false); show('waiting', false); show('game', true);
     lobbyErr('');
     wins = 0; draws = 0; losses = 0;
+    myStreak = 0; oppStreak = 0;
+    seriesEnded = false;
+    prevBoard = [];
+    chatRound = -1;
+    if (isHost) seriesTarget = chosenSeries;   // 房主生效自己的选择；加入方等待 config 消息
     updateScore();
+    setTimeout(() => {
+      toastChat('👋 对手已就位，开始！');
+      sfx.join();
+    }, 400);
     session = TTTOnline.createSession({
       isHost,
       send: m => { if (conn && conn.open) conn.send(m); },
@@ -523,10 +980,21 @@
 
   /* ---------- 连接 ---------- */
   function wireConn() {
-    conn.on('open', startSession);
-    conn.on('data', d => { if (session) session.onRemoteMsg(d); });
-    conn.on('close', () => onPeerLeft());
-    conn.on('error', () => onPeerLeft());
+    conn.on('open', () => {
+      if (hasOpponent) return;                 // 防抖：重复 open
+      hasOpponent = true;
+      if (isHost) conn.send({ type: 'config', series: chosenSeries });   // 下发系列赛配置
+      startSession();
+    });
+    conn.on('data', d => {
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'chat') handleChatMsg(d);            // 快捷消息：页面层处理
+      else if (d.type === 'config' && !isHost) applySeries(d.series);
+      else if (d.type === 'series-reset') resetSeriesScores();
+      else if (session) session.onRemoteMsg(d);           // 棋局消息进状态机
+    });
+    conn.on('close', onConnClosed);
+    conn.on('error', onConnClosed);
     if (!isHost) {
       // 加入侧兜底：信令通了但 P2P 通道建不起来时提示
       setTimeout(() => {
@@ -538,10 +1006,21 @@
     }
   }
 
+  function onConnClosed() {
+    if (!session && !isHost) {
+      // 尚未开赛连接就断了：多半是房主取消了房间，别让加入方干等超时
+      lobbyErr('连接中断：房主可能取消了房间');
+      backToLobby();
+      return;
+    }
+    onPeerLeft();
+  }
+
   function onPeerLeft() {
     if (!session) return;
     session = null;
     $('board').classList.add('locked');
+    $('board').classList.remove('my-turn');
     $('status').innerHTML = '对方已离开';
     $('rematchBtn').classList.add('hidden');
     $('resultModal').classList.remove('show');
@@ -549,6 +1028,10 @@
 
   /* ---------- 房主：创建房间 ---------- */
   function createRoom(retry) {
+    if (typeof Peer === 'undefined') {
+      lobbyErr('网络组件加载失败：请检查网络后刷新页面重试');
+      return;
+    }
     cleanup();
     isHost = true;
     const code = TTTOnline.randomRoomCode(4);
@@ -560,7 +1043,8 @@
       $('shareLink').value = location.origin + location.pathname + '?room=' + code;
     });
     peer.on('connection', c => {
-      if (conn && conn.open) { c.close(); return; }   // 已有对手，拒绝第三人
+      if (hasOpponent || (conn && conn.open)) { c.close(); return; }   // 已有对手（含握手中的）→ 拒绝，修复并发加入竞态
+      if (conn && !conn.open) { try { conn.close(); } catch (e) {} }   // 丢弃未完成握手的旧连接
       conn = c;
       wireConn();
     });
@@ -572,6 +1056,10 @@
 
   /* ---------- 加入方 ---------- */
   function joinRoom(code) {
+    if (typeof Peer === 'undefined') {
+      lobbyErr('网络组件加载失败：请检查网络后刷新页面重试');
+      return;
+    }
     cleanup();
     isHost = false;
     show('lobby', true); show('waiting', false);
@@ -592,6 +1080,28 @@
   $('cancelBtn').addEventListener('click', backToLobby);
   $('leaveBtn').addEventListener('click', backToLobby);
 
+  // 系列赛模式（仅房主的选择生效，加入方通过 config 消息跟随）
+  document.querySelectorAll('.seg').forEach(btn => btn.addEventListener('click', () => {
+    document.querySelector('.seg.active').classList.remove('active');
+    btn.classList.add('active');
+    chosenSeries = Number(btn.dataset.series) || 0;
+  }));
+  function applySeries(n) { seriesTarget = Number(n) || 0; }
+  function resetSeriesScores() {
+    wins = 0; draws = 0; losses = 0;
+    seriesEnded = false;
+    updateScore();
+  }
+
+  // 静音开关（偏好持久化）
+  const muteBtnEl = $('muteBtn');
+  muteBtnEl.textContent = muted ? '🔇' : '🔊';
+  muteBtnEl.addEventListener('click', () => {
+    muted = !muted;
+    try { localStorage.setItem('tttc-muted', muted ? '1' : '0'); } catch (e) {}
+    muteBtnEl.textContent = muted ? '🔇' : '🔊';
+  });
+
   $('joinBtn').addEventListener('click', () => {
     const code = $('codeInput').value.trim().toUpperCase();
     if (!CODE_RE.test(code)) { lobbyErr('请输入 4 位房间码（字母 I L O 和数字 0 1 除外）'); return; }
@@ -600,15 +1110,31 @@
   $('codeInput').addEventListener('input', () => lobbyErr(''));
   $('codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('joinBtn').click(); });
 
-  $('copyBtn').addEventListener('click', () => {
-    const link = $('shareLink').value;
-    const done = () => { $('copyBtn').textContent = '已复制 ✓'; setTimeout(() => { $('copyBtn').textContent = '复制链接'; }, 1500); };
+  function copyText(text, btn, normalText) {
+    const done = () => {
+      btn.textContent = '已复制 ✓';
+      setTimeout(() => { btn.textContent = normalText; }, 1500);
+    };
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(link).then(done).catch(() => fallbackCopy(link, done));
+      navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
     } else {
-      fallbackCopy(link, done);
+      fallbackCopy(text, done);
     }
-  });
+  }
+  $('copyBtn').addEventListener('click', () => copyText($('shareLink').value, $('copyBtn'), '复制链接'));
+  $('copyCodeBtn').addEventListener('click', () => copyText($('roomCode').textContent, $('copyCodeBtn'), '复制房间码'));
+
+  // 系统分享（手机上直接调起分享面板；不支持则隐藏）
+  if (navigator.share) {
+    $('shareBtn').classList.remove('hidden');
+    $('shareBtn').addEventListener('click', () => {
+      navigator.share({
+        title: '井字棋 · 在线对战',
+        text: `来和我下一局井字棋！房间码 ${$('roomCode').textContent}`,
+        url: $('shareLink').value,
+      }).catch(() => {});
+    });
+  }
   function fallbackCopy(text, done) {
     const ta = document.createElement('textarea');
     ta.value = text;
@@ -618,17 +1144,26 @@
     document.body.removeChild(ta);
   }
 
-  const rematch = () => {
-    if (session && session.getState().over) session.rematch();   // 用实时状态判断，不依赖渲染缓存
+  const rematchRound = () => {
+    if (seriesEnded) return;                    // 系列赛已结束 → 只能开新系列
+    if (session && session.getState().over) session.rematch();
     $('resultModal').classList.remove('show');
   };
-  $('rematchBtn').addEventListener('click', rematch);
-  $('modalAgain').addEventListener('click', rematch);
+  const seriesRestart = () => {
+    if (!session || !session.getState().over) return;
+    if (conn && conn.open) conn.send({ type: 'series-reset' });
+    resetSeriesScores();
+    session.rematch();
+    $('resultModal').classList.remove('show');
+  };
+  $('rematchBtn').addEventListener('click', rematchRound);
+  $('modalAgain').addEventListener('click', () => (seriesEnded ? seriesRestart() : rematchRound()));
   $('modalClose').addEventListener('click', () => $('resultModal').classList.remove('show'));
 
-  // 关页面时尽快通知对方
+  // 关页面时尽快通知对方并释放房间
   window.addEventListener('beforeunload', () => {
     try { if (conn) conn.close(); } catch (e) {}
+    try { if (peer) peer.destroy(); } catch (e) {}
   });
 
   /* ---------- 通过 ?room=XXXX 链接直达 ---------- */
