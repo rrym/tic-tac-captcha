@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>最简接入示例 · tic-tac-captcha</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #eef2f7;
+    color: #1e2430;
+    margin: 0;
+    padding: 40px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0f1420; color: #e8ecf4; }
+  }
+  h1 { font-size: 20px; }
+  section { width: min(92vw, 340px); }
+  h2 { font-size: 14px; color: #6b7280; font-weight: 600; margin-bottom: 10px; }
+  output {
+    display: block;
+    margin-top: 10px;
+    font-size: 13px;
+    color: #6b7280;
+    min-height: 18px;
+  }
+</style>
+</head>
+<body>
+  <h1>tic-tac-captcha 最简接入</h1>
+
+  <section>
+    <h2>内嵌模式（默认）</h2>
+    <div id="inline"></div>
+    <output id="inlineLog"></output>
+  </section>
+
+  <section>
+    <h2>弹窗模式（popup: true）</h2>
+    <div id="popupHost"></div>
+    <output id="popupLog"></output>
+  </section>
+
+  <!-- 接入只需两步：引入 UMD 产物 + create -->
+  <script src="../dist/tic-tac-captcha.umd.js"></script>
+  <script>
+    TicTacCaptcha.create(document.getElementById('inline'), {
+      onVerified(passed) {
+        document.getElementById('inlineLog').textContent =
+          passed ? '✅ 验证通过（玩家胜或平局）' : '❌ 验证失败（电脑获胜）';
+      },
+    });
+
+    TicTacCaptcha.create(document.getElementById('popupHost'), {
+      popup: true,
+      onVerified(passed) {
+        document.getElementById('popupLog').textContent =
+          passed ? '✅ 验证通过（玩家胜或平局）' : '❌ 验证失败（电脑获胜）';
+      },
+    });
+  </script>
+</body>
+</html>

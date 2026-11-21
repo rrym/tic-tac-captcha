@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vue 3 接入示例 · tic-tac-captcha</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #eef2f7;
+    color: #1e2430;
+    margin: 0;
+    padding: 40px 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #0f1420; color: #e8ecf4; }
+  }
+  #app { max-width: 340px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 20px; text-align: center; }
+  p { font-size: 14px; text-align: center; min-height: 20px; }
+  button {
+    padding: 10px 0;
+    border: 0;
+    border-radius: 10px;
+    background: #1e2430;
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <h1>Vue 3 接入示例</h1>
+
+  <!-- 一个组件标签接入，@verified 拿结果 -->
+  <tic-tac-captcha :popup="true" @verified="onVerified" @reset="onReset" ref="captcha"></tic-tac-captcha>
+
+  <p>状态：{{ verified === null ? '未验证' : verified ? '✅ 验证通过' : '❌ 验证失败（点击按钮重试）' }}</p>
+  <button @click="reset">重置验证（换一局）</button>
+</div>
+
+<!-- CDN 方式（需联网）：先引入 Vue，再引入组件的全局构建 -->
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="../dist/vue3.global.js"></script>
+<script>
+  const { createApp, ref } = Vue;
+
+  createApp({
+    components: { TicTacCaptcha: TicTacCaptchaVue },
+    setup() {
+      const verified = ref(null);
+      const captcha = ref(null);
+
+      const onVerified = passed => { verified.value = passed; };
+      const onReset = () => { verified.value = null; };
+      const reset = () => captcha.value.reset();
+
+      return { verified, onVerified, onReset, reset, captcha };
+    },
+  }).mount('#app');
+</script>
+</body>
+</html>

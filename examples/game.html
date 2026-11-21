@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>井字棋 · Tic-Tac-Toe</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #eef2f7;
+    --bg-accent: #dbe4f0;
+    --surface: #ffffff;
+    --surface-2: #f4f6fa;
+    --cell-hover: #e9eef6;
+    --text: #1e2430;
+    --text-dim: #6b7280;
+    --border: #e3e8f0;
+    --x: #2563eb;
+    --o: #e11d48;
+    --win-bg: #fdf0c8;
+    --win-border: #e9c46a;
+    --shadow: 0 10px 30px rgba(30, 41, 59, .08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1420;
+      --bg-accent: #1a2233;
+      --surface: #1a2130;
+      --surface-2: #222b3e;
+      --cell-hover: #2a3550;
+      --text: #e8ecf4;
+      --text-dim: #8b95a8;
+      --border: #2c3750;
+      --x: #60a5fa;
+      --o: #fb7185;
+      --win-bg: rgba(250, 204, 21, .13);
+      --win-border: rgba(250, 204, 21, .45);
+      --shadow: 0 10px 30px rgba(0, 0, 0, .4);
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background:
+      radial-gradient(1100px 560px at 18% -12%, var(--bg-accent), transparent),
+      var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    padding: 36px 16px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .app {
+    width: min(92vw, 440px);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  /* ---------- 头部 ---------- */
+  header { text-align: center; }
+  h1 {
+    font-size: 30px;
+    letter-spacing: 2px;
+    background: linear-gradient(120deg, var(--x), var(--o));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .subtitle {
+    margin-top: 4px;
+    font-size: 12px;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+
+  /* ---------- 模式切换（分段控件） ---------- */
+  .mode-switch {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    box-shadow: var(--shadow);
+  }
+  .mode-btn {
+    flex: 1;
+    padding: 9px 4px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .mode-btn:hover { color: var(--text); }
+  .mode-btn.active {
+    background: var(--text);
+    color: var(--bg);
+    font-weight: 600;
+  }
+
+  /* ---------- 状态栏 ---------- */
+  .status {
+    min-height: 26px;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+  }
+  .status.thinking { color: var(--text-dim); font-weight: 500; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    font-size: 14px;
+    font-weight: 800;
+    color: #fff;
+  }
+  .chip.cx { background: var(--x); }
+  .chip.co { background: var(--o); }
+
+  /* ---------- 棋盘 ---------- */
+  .board {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    padding: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+  }
+  .cell {
+    position: relative;
+    aspect-ratio: 1;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: var(--surface-2);
+    cursor: pointer;
+    transition: background .15s, transform .12s, border-color .2s;
+  }
+  .board:not(.locked) .cell:not([data-mark]):hover {
+    background: var(--cell-hover);
+    transform: translateY(-1px);
+  }
+  .board.locked .cell { cursor: default; }
+
+  /* 棋子（SVG 描边动画） */
+  .mark {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s, transform .25s;
+  }
+  .mark-x line {
+    --len: 68;
+    stroke: var(--x);
+    stroke-width: 10;
+    stroke-linecap: round;
+    fill: none;
+    stroke-dasharray: var(--len);
+    stroke-dashoffset: 0;
+  }
+  .mark-o circle {
+    --len: 164;
+    stroke: var(--o);
+    stroke-width: 10;
+    fill: none;
+    stroke-dasharray: var(--len);
+    stroke-dashoffset: 0;
+  }
+  /* 悬停时半透明预示当前玩家的棋子 */
+  .board[data-turn="X"]:not(.locked) .cell:not([data-mark]):hover .mark-x,
+  .board[data-turn="O"]:not(.locked) .cell:not([data-mark]):hover .mark-o {
+    opacity: .18;
+  }
+  /* 落子后显示并播放画线动画 */
+  .cell[data-mark="X"] .mark-x,
+  .cell[data-mark="O"] .mark-o { opacity: 1; }
+  .cell[data-mark] .mark-x line,
+  .cell[data-mark] .mark-o circle { stroke-dashoffset: var(--len); }
+  .cell[data-mark="X"] .mark-x line { animation: draw .3s ease-out forwards; }
+  .cell[data-mark="X"] .mark-x line:last-child { animation-delay: .16s; }
+  .cell[data-mark="O"] .mark-o circle { animation: draw .42s ease-out forwards; }
+  @keyframes draw {
+    from { stroke-dashoffset: var(--len); }
+    to   { stroke-dashoffset: 0; }
+  }
+
+  /* 获胜高亮：连线三格提亮，其余棋子变淡 */
+  .cell.win-cell {
+    background: var(--win-bg);
+    border-color: var(--win-border);
+  }
+  .cell.win-cell .mark { transform: scale(1.1); }
+  .board.win .cell:not(.win-cell) .mark { opacity: .28; }
+
+  /* ---------- 比分 ---------- */
+  .scoreboard {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .score {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 10px 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 13px;
+  }
+  .score-label { font-size: 12px; color: var(--text-dim); }
+  .score-num { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  /* ---------- 操作按钮 ---------- */
+  .actions { display: flex; gap: 10px; }
+  .btn {
+    flex: 1;
+    padding: 11px 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform .12s, opacity .15s, background .15s;
+  }
+  .btn:hover { background: var(--surface-2); }
+  .btn:active { transform: scale(.97); }
+  .btn.primary {
+    background: var(--text);
+    border-color: var(--text);
+    color: var(--bg);
+    font-weight: 600;
+  }
+  .btn.primary:hover { opacity: .9; background: var(--text); }
+
+  /* ---------- 结果弹窗 ---------- */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 20, 32, .55);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s;
+    z-index: 10;
+  }
+  .modal-overlay.show { opacity: 1; pointer-events: auto; }
+  .modal {
+    width: min(86vw, 320px);
+    padding: 30px 24px 22px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .3);
+    text-align: center;
+    transform: translateY(14px) scale(.95);
+    transition: transform .28s cubic-bezier(.34, 1.4, .64, 1);
+  }
+  .modal-overlay.show .modal { transform: none; }
+  .result-emoji { font-size: 48px; line-height: 1; }
+  .result-title {
+    margin: 14px 0 4px;
+    font-size: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .result-title .chip { width: 30px; height: 30px; font-size: 17px; border-radius: 9px; }
+  .result-sub { font-size: 13px; color: var(--text-dim); }
+  .modal .actions { margin-top: 20px; }
+
+  @media (max-width: 380px) {
+    .mode-btn { font-size: 13px; }
+    h1 { font-size: 26px; }
+  }
+</style>
+</head>
+<body>
+<main class="app">
+  <header>
+    <h1>井字棋</h1>
+    <p class="subtitle">Tic-Tac-Toe</p>
+  </header>
+
+  <div class="mode-switch" role="radiogroup" aria-label="游戏模式">
+    <button class="mode-btn active" data-mode="pvp">双人对战</button>
+    <button class="mode-btn" data-mode="easy">人机 · 简单</button>
+    <button class="mode-btn" data-mode="hard">人机 · 困难</button>
+  </div>
+
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+
+  <section class="board" id="board" data-turn="X" aria-label="井字棋棋盘"></section>
+
+  <section class="scoreboard">
+    <div class="score"><span class="score-label" id="labelX">X 获胜</span><span class="score-num" id="scoreX">0</span></div>
+    <div class="score"><span class="score-label">平局</span><span class="score-num" id="scoreD">0</span></div>
+    <div class="score"><span class="score-label" id="labelO">O 获胜</span><span class="score-num" id="scoreO">0</span></div>
+  </section>
+
+  <div class="actions">
+    <button class="btn primary" id="restart">再来一局</button>
+    <button class="btn" id="resetScore">清空比分</button>
+  </div>
+</main>
+
+<!-- 结果弹窗 -->
+<div class="modal-overlay" id="resultModal" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+  <div class="modal">
+    <div class="result-emoji" id="resultEmoji">🎉</div>
+    <h2 class="result-title" id="resultTitle"></h2>
+    <p class="result-sub" id="resultSub"></p>
+    <div class="actions">
+      <button class="btn primary" id="modalAgain">再来一局</button>
+      <button class="btn" id="modalClose">查看棋盘</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const WIN_LINES = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6],
+  ];
+
+  const boardEl  = document.getElementById('board');
+  const statusEl = document.getElementById('status');
+  const scoreXEl = document.getElementById('scoreX');
+  const scoreDEl = document.getElementById('scoreD');
+  const scoreOEl = document.getElementById('scoreO');
+  const labelXEl = document.getElementById('labelX');
+  const labelOEl = document.getElementById('labelO');
+  const modalEl = document.getElementById('resultModal');
+  const resultEmojiEl = document.getElementById('resultEmoji');
+  const resultTitleEl = document.getElementById('resultTitle');
+  const resultSubEl = document.getElementById('resultSub');
+
+  let mode = 'pvp';                 // pvp | easy | hard
+  let board = Array(9).fill('');
+  let current = 'X';
+  let gameOver = false;
+  let startMark = 'X';              // 双人模式下每局轮换先手
+  let scores = { X: 0, O: 0, D: 0 };
+  let aiTimer = null;
+
+  const AI_MARK = 'O';              // 人机模式：玩家执 X 先手，电脑执 O
+  const isAiMode = () => mode !== 'pvp';
+
+  /* ---------- DOM 构建 ---------- */
+  const cells = Array.from({ length: 9 }, (_, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'cell';
+    btn.dataset.index = i;
+    btn.setAttribute('aria-label', `第 ${i + 1} 格`);
+    btn.innerHTML =
+      '<svg class="mark mark-x" viewBox="0 0 100 100" aria-hidden="true">' +
+      '<line x1="27" y1="27" x2="73" y2="73"/><line x1="73" y1="27" x2="27" y2="73"/>' +
+      '</svg>' +
+      '<svg class="mark mark-o" viewBox="0 0 100 100" aria-hidden="true">' +
+      '<circle cx="50" cy="50" r="26"/></svg>';
+    btn.addEventListener('click', () => {
+      if (boardEl.classList.contains('locked')) return;
+      place(i);
+    });
+    boardEl.appendChild(btn);
+    return btn;
+  });
+
+  /* ---------- 规则 ---------- */
+  function getWinner(b) {
+    for (const line of WIN_LINES) {
+      const [a, c, d] = line;
+      if (b[a] && b[a] === b[c] && b[a] === b[d]) return { winner: b[a], line };
+    }
+    if (b.every(v => v)) return { winner: null, line: null }; // 平局
+    return null; // 未结束
+  }
+
+  /* ---------- 状态展示 ---------- */
+  const chip = m => `<span class="chip ${m === 'X' ? 'cx' : 'co'}">${m}</span>`;
+
+  function updateStatus() {
+    if (gameOver) return; // 结束语由 endRound 设置
+    if (isAiMode()) {
+      statusEl.innerHTML = current === 'X'
+        ? `你的回合 ${chip('X')}`
+        : '电脑思考中…';
+      statusEl.classList.toggle('thinking', current !== 'X');
+    } else {
+      statusEl.innerHTML = `轮到 ${chip(current)} 落子`;
+      statusEl.classList.remove('thinking');
+    }
+  }
+
+  function updateScore() {
+    scoreXEl.textContent = scores.X;
+    scoreOEl.textContent = scores.O;
+    scoreDEl.textContent = scores.D;
+  }
+
+  function updateLabels() {
+    if (isAiMode()) {
+      labelXEl.textContent = '你（X）';
+      labelOEl.textContent = '电脑（O）';
+    } else {
+      labelXEl.textContent = 'X 获胜';
+      labelOEl.textContent = 'O 获胜';
+    }
+  }
+
+  /* ---------- 结果弹窗 ---------- */
+  function showResult(winner) {
+    if (winner) {
+      resultEmojiEl.textContent = '🎉';
+      resultTitleEl.innerHTML = isAiMode()
+        ? (winner === 'X' ? '你赢了！' : '电脑获胜！')
+        : `${chip(winner)} 获胜！`;
+    } else {
+      resultEmojiEl.textContent = '🤝';
+      resultTitleEl.textContent = '平局！';
+    }
+    resultSubEl.textContent = isAiMode()
+      ? `你 ${scores.X} 胜 · 平局 ${scores.D} · 电脑 ${scores.O} 胜`
+      : `X ${scores.X} 胜 · 平局 ${scores.D} · O ${scores.O} 胜`;
+    modalEl.classList.add('show');
+    document.getElementById('modalAgain').focus();
+  }
+
+  function hideResult() { modalEl.classList.remove('show'); }
+
+  /* ---------- 对局流程 ---------- */
+  function newRound() {
+    clearTimeout(aiTimer);
+    hideResult();
+    board = Array(9).fill('');
+    gameOver = false;
+    current = isAiMode() ? 'X' : startMark;
+    boardEl.classList.remove('locked', 'win');
+    boardEl.dataset.turn = current;
+    cells.forEach(c => {
+      delete c.dataset.mark;
+      c.classList.remove('win-cell');
+      c.setAttribute('aria-label', `第 ${Number(c.dataset.index) + 1} 格`);
+    });
+    updateStatus();
+  }
+
+  function place(i) {
+    if (gameOver || board[i]) return;
+    board[i] = current;
+    cells[i].dataset.mark = current;
+    cells[i].setAttribute('aria-label', `第 ${i + 1} 格，${current}`);
+
+    const result = getWinner(board);
+    if (result) { endRound(result); return; }
+
+    current = current === 'X' ? 'O' : 'X';
+    boardEl.dataset.turn = current;
+    updateStatus();
+    if (isAiMode() && current === AI_MARK) scheduleAi();
+  }
+
+  function endRound({ winner, line }) {
+    gameOver = true;
+    boardEl.classList.add('locked');
+    if (winner) {
+      scores[winner]++;
+      boardEl.classList.add('win');
+      line.forEach(i => cells[i].classList.add('win-cell'));
+      statusEl.classList.remove('thinking');
+      if (isAiMode()) {
+        statusEl.innerHTML = winner === 'X' ? '你赢了！' : '电脑获胜';
+      } else {
+        statusEl.innerHTML = `${chip(winner)} 获胜！`;
+      }
+    } else {
+      scores.D++;
+      statusEl.classList.remove('thinking');
+      statusEl.textContent = '平局！';
+    }
+    updateScore();
+    showResult(winner);
+  }
+
+  /* ---------- 电脑玩家 ---------- */
+  function scheduleAi() {
+    boardEl.classList.add('locked');
+    aiTimer = setTimeout(() => {
+      const move = mode === 'hard' ? bestMove(board) : easyMove(board);
+      boardEl.classList.remove('locked');
+      place(move);
+    }, 480);
+  }
+
+  function randomMove(b) {
+    const empty = b.map((v, i) => (v ? -1 : i)).filter(i => i >= 0);
+    return empty[Math.floor(Math.random() * empty.length)];
+  }
+
+  // 简单模式：能赢就赢，一半概率堵住玩家的威胁，其余随机（像粗心的新手）
+  function easyMove(b) {
+    const human = AI_MARK === 'X' ? 'O' : 'X';
+    const win = findLineMove(b, AI_MARK);
+    if (win !== -1) return win;
+    if (Math.random() < 0.5) {
+      const block = findLineMove(b, human);
+      if (block !== -1) return block;
+    }
+    return randomMove(b);
+  }
+
+  // 找出让 mark 立即连成三子的空格；没有则返回 -1
+  function findLineMove(b, mark) {
+    for (const line of WIN_LINES) {
+      const vals = line.map(i => b[i]);
+      const emptyIdx = vals.indexOf('');
+      if (vals.filter(v => v === mark).length === 2 && emptyIdx !== -1) {
+        return line[emptyIdx];
+      }
+    }
+    return -1;
+  }
+
+  // Minimax 完全搜索（困难模式，电脑不会输）
+  function bestMove(b) {
+    const human = AI_MARK === 'X' ? 'O' : 'X';
+    let best = -Infinity, candidates = [];
+    for (let i = 0; i < 9; i++) {
+      if (b[i]) continue;
+      b[i] = AI_MARK;
+      const score = minimax(b, 0, false, human);
+      b[i] = '';
+      if (score > best) { best = score; candidates = [i]; }
+      else if (score === best) candidates.push(i);
+    }
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  }
+
+  function minimax(b, depth, isMax, human) {
+    const result = getWinner(b);
+    if (result) {
+      if (result.winner === AI_MARK) return 10 - depth;   // 越快赢分越高
+      if (result.winner === human) return depth - 10;     // 越晚输分越高
+      return 0;
+    }
+    let best = isMax ? -Infinity : Infinity;
+    for (let i = 0; i < 9; i++) {
+      if (b[i]) continue;
+      b[i] = isMax ? AI_MARK : human;
+      const score = minimax(b, depth + 1, !isMax, human);
+      b[i] = '';
+      best = isMax ? Math.max(best, score) : Math.min(best, score);
+    }
+    return best;
+  }
+
+  /* ---------- 控件事件 ---------- */
+  document.querySelectorAll('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.mode === mode) return;
+      document.querySelector('.mode-btn.active').classList.remove('active');
+      btn.classList.add('active');
+      mode = btn.dataset.mode;
+      scores = { X: 0, O: 0, D: 0 }; // 换对手，比分重新计算
+      startMark = 'X';
+      updateLabels();
+      updateScore();
+      newRound();
+    });
+  });
+
+  function restartGame() {
+    if (mode === 'pvp') startMark = startMark === 'X' ? 'O' : 'X'; // 轮换先手
+    newRound();
+  }
+
+  document.getElementById('restart').addEventListener('click', restartGame);
+  document.getElementById('modalAgain').addEventListener('click', restartGame);
+  document.getElementById('modalClose').addEventListener('click', hideResult);
+
+  // 点击遮罩或按 Esc 关闭弹窗（保留棋盘查看获胜连线）
+  modalEl.addEventListener('click', e => { if (e.target === modalEl) hideResult(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && modalEl.classList.contains('show')) hideResult();
+  });
+
+  document.getElementById('resetScore').addEventListener('click', () => {
+    scores = { X: 0, O: 0, D: 0 };
+    updateScore();
+  });
+
+  /* ---------- 启动 ---------- */
+  updateLabels();
+  updateScore();
+  newRound();
+})();
+</script>
+</body>
+</html>

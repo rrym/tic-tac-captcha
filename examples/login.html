@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · 井字棋行为验证码</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #eef2f7;
+    --bg-accent: #dbe4f0;
+    --surface: #ffffff;
+    --surface-2: #f4f6fa;
+    --text: #1e2430;
+    --text-dim: #6b7280;
+    --border: #e3e8f0;
+    --x: #2563eb;
+    --shadow: 0 10px 30px rgba(30, 41, 59, .08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1420;
+      --bg-accent: #1a2233;
+      --surface: #1a2130;
+      --surface-2: #222b3e;
+      --text: #e8ecf4;
+      --text-dim: #8b95a8;
+      --border: #2c3750;
+      --x: #60a5fa;
+      --shadow: 0 10px 30px rgba(0, 0, 0, .4);
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background:
+      radial-gradient(1100px 560px at 18% -12%, var(--bg-accent), transparent),
+      var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 48px 16px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .auth-card {
+    width: min(92vw, 380px);
+    padding: 26px 26px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .auth-card h1 { text-align: center; font-size: 20px; }
+
+  /* 登录/注册切换 */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .tab {
+    flex: 1;
+    padding: 8px 0;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .tab.active { background: var(--text); color: var(--bg); font-weight: 600; }
+
+  /* 表单 */
+  form { display: flex; flex-direction: column; gap: 14px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 13px; color: var(--text-dim); }
+  .field input {
+    padding: 11px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-2);
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .field input:focus {
+    border-color: var(--x);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .15);
+  }
+  .hidden { display: none; }
+
+  .btn {
+    padding: 12px 0;
+    border: 0;
+    border-radius: 12px;
+    background: var(--text);
+    color: var(--bg);
+    font-size: 15px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: transform .12s, opacity .15s;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn:hover { opacity: .9; }
+
+  .msg { min-height: 20px; text-align: center; font-size: 13px; }
+  .msg.ok { color: #16a34a; }
+  .msg.bad { color: #dc2626; }
+
+  /* 验证码未通过时的抖动提醒 */
+  .captcha-wrap.shake { animation: shake .4s; }
+  @keyframes shake {
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+  }
+
+  .note {
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--text-dim);
+    text-align: center;
+  }
+  .note a { color: var(--x); }
+</style>
+</head>
+<body>
+<main class="auth-card">
+  <h1>账号中心</h1>
+
+  <div class="tabs">
+    <button type="button" class="tab active" data-tab="login">登录</button>
+    <button type="button" class="tab" data-tab="register">注册</button>
+  </div>
+
+  <form id="authForm" novalidate>
+    <div class="field">
+      <label for="username">用户名</label>
+      <input id="username" type="text" placeholder="请输入用户名" autocomplete="username">
+    </div>
+    <div class="field">
+      <label for="password">密码</label>
+      <input id="password" type="password" placeholder="请输入密码" autocomplete="current-password">
+    </div>
+    <div class="field hidden" id="confirmRow">
+      <label for="confirm">确认密码</label>
+      <input id="confirm" type="password" placeholder="请再次输入密码" autocomplete="new-password">
+    </div>
+
+    <div class="captcha-wrap" id="captcha"></div>
+
+    <button class="btn" type="submit" id="submitBtn">登 录</button>
+    <p class="msg" id="msg"></p>
+  </form>
+
+  <p class="note">
+    井字棋行为验证码演示：玩家获胜或平局 → 验证通过；电脑获胜 → 验证失败。<br>
+    组件源码见 <code>src/</code> · <a href="./game.html">← 返回游戏</a>
+  </p>
+</main>
+
+<script src="../dist/tic-tac-captcha.umd.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  const $ = id => document.getElementById(id);
+  const msgEl = $('msg');
+  const captchaWrap = $('captcha');
+  const form = $('authForm');
+  const tabBtns = document.querySelectorAll('.tab');
+
+  let tab = 'login';
+  let captchaOk = false;
+
+  const msg = (text, type) => {
+    msgEl.textContent = text;
+    msgEl.className = 'msg' + (type ? ' ' + type : '');
+  };
+
+  // 挂载验证码（弹窗模式）：点触发按钮才弹出；每局结束（胜/平/负）都会回调
+  const captcha = TicTacCaptcha.create(captchaWrap, {
+    popup: true,
+    onVerified(passed) {
+      captchaOk = passed;
+      if (passed) {
+        msg('人机验证通过 ✓', 'ok');
+      } else {
+        msg('验证失败：在弹窗里点「再试一次」，赢下或战平电脑即可', 'bad');
+      }
+    },
+    onReset() {
+      captchaOk = false; // 换一局后需要重新通过
+      msg('', '');
+    },
+  });
+
+  // 登录 / 注册 切换（验证状态保留，无需重玩）
+  tabBtns.forEach(btn => btn.addEventListener('click', () => {
+    if (btn.dataset.tab === tab) return;
+    document.querySelector('.tab.active').classList.remove('active');
+    btn.classList.add('active');
+    tab = btn.dataset.tab;
+    $('confirmRow').classList.toggle('hidden', tab !== 'register');
+    $('submitBtn').textContent = tab === 'login' ? '登 录' : '注 册';
+    msg('', '');
+  }));
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const u = $('username').value.trim();
+    const p = $('password').value;
+    if (!u || !p) { msg('请输入用户名和密码', 'bad'); return; }
+    if (tab === 'register' && p !== $('confirm').value) {
+      msg('两次输入的密码不一致', 'bad');
+      return;
+    }
+    if (!captchaOk) {
+      msg('请先完成人机验证', 'bad');
+      captchaWrap.classList.add('shake');
+      setTimeout(() => captchaWrap.classList.remove('shake'), 500);
+      captcha.open(); // 直接弹出验证窗口
+      return;
+    }
+    msg(`✅ ${tab === 'login' ? '登录' : '注册'}成功！（演示页面，未发起真实请求）`, 'ok');
+  });
+})();
+</script>
+</body>
+</html>

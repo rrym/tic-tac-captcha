@@ -1,0 +1,51 @@
+{
+  "name": "tic-tac-captcha",
+  "version": "1.0.0",
+  "description": "井字棋行为验证码 — beat or draw the tic-tac-toe bot to pass human verification. Framework-agnostic core with a Vue 3 component.",
+  "keywords": [
+    "captcha",
+    "tic-tac-toe",
+    "human-verification",
+    "behavior-captcha",
+    "vue3",
+    "vue3-component",
+    "vanilla-js"
+  ],
+  "license": "MIT",
+  "author": "bepo",
+  "main": "dist/tic-tac-captcha.umd.js",
+  "module": "dist/tic-tac-captcha.esm.js",
+  "exports": {
+    ".": {
+      "import": "./dist/tic-tac-captcha.esm.js",
+      "require": "./dist/tic-tac-captcha.umd.js"
+    },
+    "./vue3": {
+      "import": "./dist/vue3.esm.js",
+      "default": "./dist/vue3.esm.js"
+    },
+    "./dist/tic-tac-captcha.umd.js": "./dist/tic-tac-captcha.umd.js",
+    "./dist/vue3.global.js": "./dist/vue3.global.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "scripts"
+  ],
+  "scripts": {
+    "build": "node scripts/build.js",
+    "test": "node test/run.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-name/tic-tac-captcha.git"
+  },
+  "homepage": "https://github.com/your-name/tic-tac-captcha#readme",
+  "bugs": {
+    "url": "https://github.com/your-name/tic-tac-captcha/issues"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
